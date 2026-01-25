@@ -1,0 +1,23 @@
+# Maven
+**/target/
+
+# DeskPilot runtime artifacts
+runs/
+**/runs/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+
+# Local env
+.env
+
+# Assembly outputs
+**/*-dist.zip
+

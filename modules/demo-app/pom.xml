@@ -1,0 +1,65 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.deskpilot</groupId>
+    <artifactId>deskpilot</artifactId>
+    <version>0.1.0</version>
+    <!-- from modules/demo-app, root pom is two levels up -->
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>demo-app</artifactId>
+  <packaging>jar</packaging>
+
+  <dependencies>
+    <!-- demo app is a normal Java GUI app, keep it simple -->
+  <dependency>
+    <groupId>io.deskpilot</groupId>
+    <artifactId>engine</artifactId>
+    <version>${project.version}</version>
+  </dependency>
+</dependencies>
+
+
+  <build>
+    <plugins>
+<plugin>
+  <groupId>org.codehaus.mojo</groupId>
+  <artifactId>exec-maven-plugin</artifactId>
+  <version>3.6.3</version>
+
+  <executions>
+
+    <!-- 1) Launch the demo GUI -->
+    <execution>
+      <id>run-app</id>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>io.deskpilot.demo.DeskPilotDemoApp</mainClass>
+      </configuration>
+    </execution>
+
+    <!-- 2) Run the automation smoke -->
+    <execution>
+      <id>run-smoke</id>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>io.deskpilot.demo.DemoCompositeActionsSmoke</mainClass>
+      </configuration>
+    </execution>
+
+  </executions>
+</plugin>
+
+
+    </plugins>
+  </build>
+
+</project>
