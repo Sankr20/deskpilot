@@ -35,6 +35,7 @@ public class DeskPilotSession implements LocatorSession, AutoCloseable  {
     private final Rectangle clientRectRobot;
 private Actions actions;
     private final Artifacts artifacts;
+    private final RunOptions runOptions;
     private Path currentStepDir; // set when step() starts
 private static final int OCR_MIN_CROP_W = 60;
 private static final int OCR_MIN_CROP_H = 18;
@@ -50,12 +51,14 @@ private static final int OCR_MIN_CROP_H = 18;
             HWND hwnd,
             Rectangle clientRectWin32,
             Rectangle clientRectRobot,
-            Artifacts artifacts) {
+            Artifacts artifacts,
+            RunOptions runOptions) {
         this.driver = driver;
         this.hwnd = hwnd;
         this.clientRectWin32 = clientRectWin32;
         this.clientRectRobot = clientRectRobot;
         this.artifacts = artifacts;
+        this.runOptions = java.util.Objects.requireNonNull(runOptions, "runOptions is null");
     }
 
     // -------------------------
@@ -63,31 +66,37 @@ private static final int OCR_MIN_CROP_H = 18;
     // -------------------------
 
     public static DeskPilotSession attachPickWindow(String runFolder) throws Exception {
-        DpiAwareness.enable();
+    return attachPickWindow(RunOptions.builder().runName(runFolder).build());
+}
 
-        System.out.println("Click on the target window in 5 seconds...");
-        Thread.sleep(5000);
+public static DeskPilotSession attachPickWindow(RunOptions options) throws Exception {
+    DpiAwareness.enable();
 
-        HWND hwnd = WindowManager.pickWindowHandle();
-        hwnd = WindowManager.toTopLevel(hwnd);
+    System.out.println("Click on the target window in 5 seconds...");
+    Thread.sleep(5000);
 
-        String title = WindowManager.getWindowTitle(hwnd);
-        Rectangle clientRectWin32 = WindowManager.getClientRectOnScreenOrThrow(hwnd);
-        Rectangle clientRectRobot = RobotCoords.toRobotRect(clientRectWin32);
+    HWND hwnd = WindowManager.pickWindowHandle();
+    hwnd = WindowManager.toTopLevel(hwnd);
 
-        System.out.println("Selected window: " + title);
-        System.out.println("Client rect (win32): " + clientRectWin32);
+    String title = WindowManager.getWindowTitle(hwnd);
+    Rectangle clientRectWin32 = WindowManager.getClientRectOnScreenOrThrow(hwnd);
+    Rectangle clientRectRobot = RobotCoords.toRobotRect(clientRectWin32);
 
+    System.out.println("Selected window: " + title);
+    System.out.println("Client rect (win32): " + clientRectWin32);
+
+    if (options.bringToFrontOnAttach()) {
         WindowManager.bringToFront(hwnd);
         Thread.sleep(300);
-
-        Path outDir = Paths.get("runs", runFolder);
-        Files.createDirectories(outDir);
-        Artifacts artifacts = new Artifacts(outDir);
-        DesktopDriver driver = new DesktopDriver(); // or whatever you already use
-        return new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts);
-
     }
+
+    Path outDir = options.runDir();
+    Files.createDirectories(outDir);
+    Artifacts artifacts = new Artifacts(outDir);
+    DesktopDriver driver = new DesktopDriver();
+    return new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts, options);
+}
+
 
     public Actions actions() {
     if (actions == null) actions = new Actions(this);
@@ -838,7 +847,7 @@ public void step(String stepName, StepBody body) throws Exception {
     System.out.println("=== STEP: " + stepName + " ===");
     System.out.println("Step dir: " + stepDir.toAbsolutePath());
 
-   boolean stepScreenshots = Boolean.getBoolean("deskpilot.stepScreenshots")
+   boolean stepScreenshots = runOptions.stepScreenshots()
         && !stepName.equals("startup")
         && !stepName.equals("teardown");
 
