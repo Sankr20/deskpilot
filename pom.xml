@@ -21,6 +21,7 @@
   <module>modules/engine</module>
   <module>modules/demo-app</module>
    <module>modules/cli</module>
+   <module>modules/recorder</module>
 </modules>
 
 <dependencyManagement>

@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
 
+import javax.swing.SwingUtilities;
+
 /**
  * Milestone 14: Locator-only execution.
  * - NO Targets.of / Target interface
@@ -1047,6 +1049,22 @@ public DeskPilotSession stabilize() throws Exception {
     return this;
 }
 
+public NormalizedRegion pickRegion() throws Exception {
+    System.out.println("Drag to select region (ESC to cancel) ...");
+
+    Rectangle rectWin32 = RegionPickerOverlay.pick("Drag to select region (ESC to cancel)");
+    if (rectWin32 == null) {
+        throw new IllegalStateException("User cancelled region selection");
+    }
+
+    NormalizedRegion r = NormalizedRegion.fromScreenRect(rectWin32, getClientRectWin32());
+
+    try {
+        step("pick-region", () -> saveRegionOverlay("picked", rectWin32, r));
+    } catch (Exception ignore) {}
+
+    return r;
+}
 
 
 }

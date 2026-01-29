@@ -21,50 +21,58 @@ public final class RegionPickerOverlay {
     }
 
     public static Rectangle pick(String instruction) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(1);
-        final Rectangle[] result = new Rectangle[1];
+    CountDownLatch latch = new CountDownLatch(1);
+    final Rectangle[] result = new Rectangle[1];
 
-        // Full virtual desktop bounds (supports multi-monitor)
-        Rectangle screen = getVirtualBounds();
+    Rectangle screen = getVirtualBounds();
 
-        JWindow w = new JWindow();
-        w.setAlwaysOnTop(true);
-        w.setBounds(screen);
-        w.setBackground(new Color(0, 0, 0, 1)); // nearly transparent
-        w.setFocusableWindowState(true);
+    JWindow w = new JWindow();
+    w.setAlwaysOnTop(true);
+    w.setBounds(screen);
+    w.setBackground(new Color(0, 0, 0, 1)); // nearly transparent
+    w.setFocusableWindowState(true);
 
-        PickerPane pane = new PickerPane(instruction, screen, r -> {
-            result[0] = r;
-            latch.countDown();
-            w.dispose();
-        }, () -> {
-            result[0] = null;
-            latch.countDown();
-            w.dispose();
-        });
+    PickerPane pane = new PickerPane(instruction, screen, r -> {
+        result[0] = r;
+        latch.countDown();
+        w.dispose();
+    }, () -> {
+        result[0] = null;
+        latch.countDown();
+        w.dispose();
+    });
 
-        w.setContentPane(pane);
+    w.setContentPane(pane);
 
-        // Show
-        SwingUtilities.invokeLater(() -> {
-            w.setVisible(true);
-            w.toFront();
-            pane.requestFocusInWindow();
-        });
+    Runnable show = () -> {
+        w.setVisible(true);
+        w.toFront();
+        w.requestFocus();
+        w.requestFocusInWindow();
+        pane.requestFocusInWindow();
+    };
 
-        latch.await();
-        return result[0];
+    // ✅ If we're already on EDT, show immediately (no invokeLater deadlock)
+    if (SwingUtilities.isEventDispatchThread()) {
+        show.run();
+    } else {
+        SwingUtilities.invokeLater(show);
     }
 
-    private static Rectangle getVirtualBounds() {
-        Rectangle all = new Rectangle();
-        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-        for (GraphicsDevice gd : ge.getScreenDevices()) {
-            Rectangle b = gd.getDefaultConfiguration().getBounds();
-            all = all.union(b);
-        }
-        return all;
+    latch.await();
+    return result[0];
+}
+
+private static Rectangle getVirtualBounds() {
+    Rectangle all = new Rectangle();
+    GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+    for (GraphicsDevice gd : ge.getScreenDevices()) {
+        Rectangle b = gd.getDefaultConfiguration().getBounds();
+        all = all.union(b);
     }
+    return all;
+}
+
 
     // ----------------------------------------------------
 

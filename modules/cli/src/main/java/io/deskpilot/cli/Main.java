@@ -1,6 +1,6 @@
 package io.deskpilot.cli;
 
-import io.deskpilot.engine.EngineRecordMode;
+
 import io.deskpilot.engine.EngineActionSmoke;
 
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -29,7 +29,7 @@ public final class Main {
                 init(slice(args));
                 break;
             case "record":
-                EngineRecordMode.main(slice(args));
+                RecorderCLI.recordToFile(slice(args));
                 break;
             case "run":
                 runTest(args);
