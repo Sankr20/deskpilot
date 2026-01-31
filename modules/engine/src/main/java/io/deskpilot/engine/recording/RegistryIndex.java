@@ -16,7 +16,9 @@ public final class RegistryIndex {
 
     private static final String START = "// --- DESKPILOT:AUTOGEN:START";
     private static final String END   = "// --- DESKPILOT:AUTOGEN:END";
+
     private final Map<String, LocatorKind> locatorKindByConst;
+
     private final Set<String> uiMapConsts;
     private final Set<String> uiRegionConsts;
     private final Set<String> uiTemplateConsts;
@@ -25,25 +27,23 @@ public final class RegistryIndex {
     private final Map<String, double[]> pointsByConst;          // const -> [xPct,yPct]
     private final Map<String, NormalizedRegion> regionsByConst; // const -> region
 
-private RegistryIndex(
-        Set<String> uiMapConsts,
-        Set<String> uiRegionConsts,
-        Set<String> uiTemplateConsts,
-        Set<String> locatorConsts,
-        Map<String, LocatorKind> locatorKindByConst,
-        Map<String, double[]> pointsByConst,
-        Map<String, NormalizedRegion> regionsByConst
-) {
-    this.uiMapConsts = uiMapConsts;
-    this.uiRegionConsts = uiRegionConsts;
-    this.uiTemplateConsts = uiTemplateConsts;
-    this.locatorConsts = locatorConsts;
-    this.locatorKindByConst = locatorKindByConst;
-    this.pointsByConst = pointsByConst;
-    this.regionsByConst = regionsByConst;
-}
-
-
+    private RegistryIndex(
+            Set<String> uiMapConsts,
+            Set<String> uiRegionConsts,
+            Set<String> uiTemplateConsts,
+            Set<String> locatorConsts,
+            Map<String, LocatorKind> locatorKindByConst,
+            Map<String, double[]> pointsByConst,
+            Map<String, NormalizedRegion> regionsByConst
+    ) {
+        this.uiMapConsts = uiMapConsts;
+        this.uiRegionConsts = uiRegionConsts;
+        this.uiTemplateConsts = uiTemplateConsts;
+        this.locatorConsts = locatorConsts;
+        this.locatorKindByConst = locatorKindByConst;
+        this.pointsByConst = pointsByConst;
+        this.regionsByConst = regionsByConst;
+    }
 
     public static RegistryIndex load(EnginePaths paths) throws IOException {
         requireNonNull(paths, "paths");
@@ -63,50 +63,93 @@ private RegistryIndex(
         Set<String> uiTemplateConsts = uiTemplates.constNames;
 
         // Locators
-       ParsedFile locators = parseAutogen(paths.locators());
-Set<String> locatorConsts = locators.constNames;
-Map<String, LocatorKind> locatorKinds = parseLocatorKinds(locators.blocksByConst);
+        ParsedFile locators = parseAutogen(paths.locators());
+        Set<String> locatorConsts = locators.constNames;
+        Map<String, LocatorKind> locatorKinds = parseLocatorKinds(locators.blocksByConst);
 
-return new RegistryIndex(
-        uiMapConsts,
-        uiRegionConsts,
-        uiTemplateConsts,
-        locatorConsts,
-        locatorKinds,
-        points,
-        regions
-);
-
-
+        return new RegistryIndex(
+                uiMapConsts,
+                uiRegionConsts,
+                uiTemplateConsts,
+                locatorConsts,
+                locatorKinds,
+                points,
+                regions
+        );
     }
 
     // -------------------------
-    // Collision checks
+    // Const existence (typed)
     // -------------------------
 
     public boolean existsPointConst(String constName) {
-        return uiMapConsts.contains(constName) || locatorConsts.contains(constName);
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        return uiMapConsts.contains(c) || locatorConsts.contains(c);
     }
 
     public boolean existsRegionConst(String constName) {
-        return uiRegionConsts.contains(constName) || locatorConsts.contains(constName);
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        return uiRegionConsts.contains(c) || locatorConsts.contains(c);
     }
 
     public boolean existsTemplateConst(String constName) {
-        return uiTemplateConsts.contains(constName) || locatorConsts.contains(constName);
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        return uiTemplateConsts.contains(c) || locatorConsts.contains(c);
     }
 
-    public boolean existsPointOrTemplateLocator(String constName) {
-    return existsPointConst(constName) || existsTemplateConst(constName) || existsLocatorConst(constName);
-}
+    /** Exists in Locators.java AUTOGEN only. */
+    public boolean existsLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        return locatorConsts.contains(c);
+    }
 
-public boolean existsRegionLocator(String constName) {
-    return existsRegionConst(constName) || existsLocatorConst(constName);
-}
+    /** ✅ REQUIRED by EngineRecordMode */
+    public boolean existsAnyLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
 
+        return uiMapConsts.contains(c)
+                || uiRegionConsts.contains(c)
+                || uiTemplateConsts.contains(c)
+                || locatorConsts.contains(c);
+    }
+
+    public boolean existsOcrLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        return locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.OCR;
+    }
+
+    /** Accepts raw UiMap const OR locator const that is POINT. */
+    public boolean existsPointLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        if (uiMapConsts.contains(c)) return true;
+        return locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.POINT;
+    }
+
+    /** Accepts raw UiRegions const OR locator const that is REGION. */
+    public boolean existsRegionLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        if (uiRegionConsts.contains(c)) return true;
+        return locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.REGION;
+    }
+
+    /** Accepts raw UiTemplates const OR locator const that is TEMPLATE. */
+    public boolean existsTemplateLocatorConst(String constName) {
+        String c = normConst(constName);
+        if (c.isEmpty()) return false;
+        if (uiTemplateConsts.contains(c)) return true;
+        return locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.TEMPLATE;
+    }
 
     // -------------------------
-    // Near-duplicate checks
+    // Near-duplicate checks (existing behavior)
     // -------------------------
 
     public Optional<String> findNearDuplicatePoint(String constName, double xPct, double yPct, double eps) {
@@ -122,88 +165,44 @@ public boolean existsRegionLocator(String constName) {
         return Optional.empty();
     }
 
-    // -------------------------
-// 13D: verbose near-duplicate hits
-// -------------------------
+    public enum NearDupType { STRICT, IOU }
 
-public enum NearDupType { STRICT, IOU }
+    public record NearDupRegionHit(
+            String otherConst,
+            NearDupType type,
+            double dx, double dy, double dw, double dh,
+            double iou
+    ) {}
 
-public record NearDupRegionHit(
-        String otherConst,
-        NearDupType type,
-        double dx, double dy, double dw, double dh,
-        double iou
-) {}
-
-public Optional<NearDupRegionHit> findNearDuplicateRegionVerbose(NormalizedRegion r, double eps, double minIou) {
-    double minIouClamped = clamp01Allow0(minIou);
-
-    for (var e : regionsByConst.entrySet()) {
-        String other = e.getKey();
-        NormalizedRegion o = e.getValue();
-
-        double dx = Math.abs(o.xPct - r.xPct);
-        double dy = Math.abs(o.yPct - r.yPct);
-        double dw = Math.abs(o.wPct - r.wPct);
-        double dh = Math.abs(o.hPct - r.hPct);
-
-        boolean strict = dx <= eps && dy <= eps && dw <= eps && dh <= eps;
-        if (strict) {
-            return Optional.of(new NearDupRegionHit(other, NearDupType.STRICT, dx, dy, dw, dh, iou(o, r)));
-        }
-
-        if (minIouClamped > 0) {
-            double i = iou(o, r);
-            if (i >= minIouClamped) {
-                return Optional.of(new NearDupRegionHit(other, NearDupType.IOU, dx, dy, dw, dh, i));
-            }
-        }
-    }
-    return Optional.empty();
-}
-
-
-    /**
-     * Region near-duplicate:
-     * - strict eps check on x,y,w,h (fast)
-     * - OR IoU overlap check (human-friendly)
-     *
-     * @param eps    strict tolerance for x/y/w/h (e.g. 0.003)
-     * @param minIou overlap threshold (e.g. 0.85). Set <=0 to disable IoU.
-     */
-    public Optional<String> findNearDuplicateRegion(NormalizedRegion r, double eps, double minIou) {
-        double minIouClamped = clamp01Allow0(minIou); // allow 0 (disabled threshold handled below)
+    public Optional<NearDupRegionHit> findNearDuplicateRegionVerbose(NormalizedRegion r, double eps, double minIou) {
+        double minIouClamped = clamp01Allow0(minIou);
 
         for (var e : regionsByConst.entrySet()) {
             String other = e.getKey();
             NormalizedRegion o = e.getValue();
 
-            // 1) strict (old behavior)
-            boolean strict =
-                    Math.abs(o.xPct - r.xPct) <= eps &&
-                    Math.abs(o.yPct - r.yPct) <= eps &&
-                    Math.abs(o.wPct - r.wPct) <= eps &&
-                    Math.abs(o.hPct - r.hPct) <= eps;
+            double dx = Math.abs(o.xPct - r.xPct);
+            double dy = Math.abs(o.yPct - r.yPct);
+            double dw = Math.abs(o.wPct - r.wPct);
+            double dh = Math.abs(o.hPct - r.hPct);
 
-            if (strict) return Optional.of(other);
+            boolean strict = dx <= eps && dy <= eps && dw <= eps && dh <= eps;
+            if (strict) {
+                return Optional.of(new NearDupRegionHit(other, NearDupType.STRICT, dx, dy, dw, dh, iou(o, r)));
+            }
 
-            // 2) IoU overlap (better behavior)
             if (minIouClamped > 0) {
-                double iou = iou(o, r);
-                if (iou >= minIouClamped) return Optional.of(other);
+                double i = iou(o, r);
+                if (i >= minIouClamped) {
+                    return Optional.of(new NearDupRegionHit(other, NearDupType.IOU, dx, dy, dw, dh, i));
+                }
             }
         }
         return Optional.empty();
     }
 
-    /** Backwards-compatible wrapper (keeps your existing call sites working). */
-    public Optional<String> findNearDuplicateRegion(NormalizedRegion r, double eps) {
-        return findNearDuplicateRegion(r, eps, 0.85);
-    }
-
     // IoU helpers (normalized space)
     private static double iou(NormalizedRegion a, NormalizedRegion b) {
-        // clamp endpoints into [0..1] to stay safe even if a/b are slightly out-of-range
         double ax1 = clamp01(a.xPct);
         double ay1 = clamp01(a.yPct);
         double ax2 = clamp01(a.xPct + a.wPct);
@@ -214,7 +213,6 @@ public Optional<NearDupRegionHit> findNearDuplicateRegionVerbose(NormalizedRegio
         double bx2 = clamp01(b.xPct + b.wPct);
         double by2 = clamp01(b.yPct + b.hPct);
 
-        // ensure ordering (just in case)
         double a1x = Math.min(ax1, ax2), a2x = Math.max(ax1, ax2);
         double a1y = Math.min(ay1, ay2), a2y = Math.max(ay1, ay2);
         double b1x = Math.min(bx1, bx2), b2x = Math.max(bx1, bx2);
@@ -247,6 +245,128 @@ public Optional<NearDupRegionHit> findNearDuplicateRegionVerbose(NormalizedRegio
         if (v < 0) return 0;
         if (v > 1) return 1;
         return v;
+    }
+
+    // -------------------------
+    // Suggestions (✅ REQUIRED by EngineRecordMode)
+    // -------------------------
+
+    /** Suggest a closest known const (across UiMap/UiRegions/UiTemplates/Locators). */
+    public Optional<String> suggestClosestLocator(String input) {
+        if (input == null || input.isBlank()) return Optional.empty();
+        String needle = normConst(input);
+        if (needle.isEmpty()) return Optional.empty();
+
+        List<String> all = new ArrayList<>(uiMapConsts.size() + uiRegionConsts.size() + uiTemplateConsts.size() + locatorConsts.size());
+        all.addAll(uiMapConsts);
+        all.addAll(uiRegionConsts);
+        all.addAll(uiTemplateConsts);
+        all.addAll(locatorConsts);
+
+        // exact
+        for (String c : all) if (c.equals(needle)) return Optional.of(c);
+
+        // contains/prefix
+        for (String c : all) if (c.contains(needle)) return Optional.of(c);
+        for (String c : all) if (needle.contains(c)) return Optional.of(c);
+        for (String c : all) if (c.startsWith(needle) || needle.startsWith(c)) return Optional.of(c);
+
+        // Levenshtein best match
+        int bestScore = Integer.MAX_VALUE;
+        String best = null;
+        for (String c : all) {
+            int d = levenshtein(needle, c);
+            if (d < bestScore) {
+                bestScore = d;
+                best = c;
+            }
+        }
+
+        if (best != null && bestScore <= Math.max(2, needle.length() / 4)) return Optional.of(best);
+        return Optional.empty();
+    }
+
+    public Optional<String> suggestClosestConstOfKind(String input, LocatorKind requiredKind) {
+        if (input == null || input.isBlank()) return Optional.empty();
+        if (requiredKind == null || requiredKind == LocatorKind.UNKNOWN) return Optional.empty();
+
+        String needle = normConst(input);
+        if (needle.isEmpty()) return Optional.empty();
+
+        List<String> candidates = new ArrayList<>();
+
+        switch (requiredKind) {
+            case POINT -> {
+                candidates.addAll(uiMapConsts);
+                for (String c : locatorConsts) {
+                    if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.POINT) candidates.add(c);
+                }
+            }
+            case REGION -> {
+                candidates.addAll(uiRegionConsts);
+                for (String c : locatorConsts) {
+                    if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.REGION) candidates.add(c);
+                }
+            }
+            case TEMPLATE -> {
+                candidates.addAll(uiTemplateConsts);
+                for (String c : locatorConsts) {
+                    if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.TEMPLATE) candidates.add(c);
+                }
+            }
+            case OCR -> {
+                for (String c : locatorConsts) {
+                    if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.OCR) candidates.add(c);
+                }
+            }
+            default -> { return Optional.empty(); }
+        }
+
+        // exact
+        for (String c : candidates) if (c.equals(needle)) return Optional.of(c);
+
+        // contains/prefix
+        for (String c : candidates) if (c.contains(needle)) return Optional.of(c);
+        for (String c : candidates) if (needle.contains(c)) return Optional.of(c);
+        for (String c : candidates) if (c.startsWith(needle) || needle.startsWith(c)) return Optional.of(c);
+
+        // Levenshtein
+        int bestScore = Integer.MAX_VALUE;
+        String best = null;
+        for (String c : candidates) {
+            int d = levenshtein(needle, c);
+            if (d < bestScore) {
+                bestScore = d;
+                best = c;
+            }
+        }
+
+        if (best != null && bestScore <= Math.max(2, needle.length() / 4)) return Optional.of(best);
+        return Optional.empty();
+    }
+
+    private static int levenshtein(String a, String b) {
+        if (a == null) a = "";
+        if (b == null) b = "";
+        int n = a.length(), m = b.length();
+        int[] prev = new int[m + 1];
+        int[] cur = new int[m + 1];
+
+        for (int j = 0; j <= m; j++) prev[j] = j;
+
+        for (int i = 1; i <= n; i++) {
+            cur[0] = i;
+            char ca = a.charAt(i - 1);
+            for (int j = 1; j <= m; j++) {
+                int cost = (ca == b.charAt(j - 1)) ? 0 : 1;
+                cur[j] = Math.min(
+                        Math.min(cur[j - 1] + 1, prev[j] + 1),
+                        prev[j - 1] + cost
+                );
+            }
+            int[] tmp = prev; prev = cur; cur = tmp;
+        }
+        return prev[m];
     }
 
     // -------------------------
@@ -400,277 +520,56 @@ public Optional<NearDupRegionHit> findNearDuplicateRegionVerbose(NormalizedRegio
         return out;
     }
 
-    
+    private static Map<String, LocatorKind> parseLocatorKinds(Map<String, List<String>> blocksByConst) {
+        Map<String, LocatorKind> out = new LinkedHashMap<>();
+        for (var e : blocksByConst.entrySet()) {
+            String joined = String.join("\n", e.getValue());
 
-// -------------------------
-// Locator existence + suggestions
-// -------------------------
+            LocatorKind kind;
+            if (joined.contains("ocrContains(") || joined.contains("new OcrContainsLocator")) kind = LocatorKind.OCR;
+            else if (joined.contains("point(")) kind = LocatorKind.POINT;
+            else if (joined.contains("region(")) kind = LocatorKind.REGION;
+            else if (joined.contains("template(")) kind = LocatorKind.TEMPLATE;
+            else kind = LocatorKind.UNKNOWN;
 
-/** True if const exists specifically in Locators.java AUTOGEN. */
-public boolean existsLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-    return locatorConsts.contains(constName);
-}
-
-/** True if const exists in ANY registry (UiMap/UiRegions/UiTemplates/Locators). */
-public boolean existsAnyLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-
-    // NOTE: existsPointConst/existsRegionConst/existsTemplateConst already include locatorConsts
-    return existsPointConst(constName)
-            || existsRegionConst(constName)
-            || existsTemplateConst(constName)
-            || locatorConsts.contains(constName);
-}
-
-/** True only if const exists as a REGION const in UiRegions (not just a locator name). */
-public boolean existsRegionConstOnly(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-    return uiRegionConsts.contains(constName);
-}
-
-/**
- * Suggest a closest known const name (across UiMap/UiRegions/UiTemplates/Locators).
- * Returns empty if nothing is close enough.
- */
-public Optional<String> suggestClosestLocator(String input) {
-    if (input == null || input.isBlank()) return Optional.empty();
-
-    String needle = input.trim()
-            .replace("Locators.", "")
-            .toUpperCase(java.util.Locale.ROOT);
-
-    // Build candidate list from all registries
-    List<String> all = new ArrayList<>();
-    all.addAll(uiMapConsts);
-    all.addAll(uiRegionConsts);
-    all.addAll(uiTemplateConsts);
-    all.addAll(locatorConsts);
-
-    // 1) Exact
-    for (String c : all) if (c.equals(needle)) return Optional.of(c);
-
-    // 2) Contains / prefix heuristics
-    for (String c : all) if (c.contains(needle)) return Optional.of(c);
-    for (String c : all) if (needle.contains(c)) return Optional.of(c);
-    for (String c : all) if (c.startsWith(needle) || needle.startsWith(c)) return Optional.of(c);
-
-    // 3) Levenshtein best match
-    int bestScore = Integer.MAX_VALUE;
-    String best = null;
-
-    for (String c : all) {
-        int d = levenshtein(needle, c);
-        if (d < bestScore) {
-            bestScore = d;
-            best = c;
+            out.put(e.getKey(), kind);
         }
+        return out;
     }
 
-    // Accept only if "close enough"
-    if (best != null && bestScore <= Math.max(2, needle.length() / 4)) {
-        return Optional.of(best);
+    // -------------------------
+    // Normalization helper
+    // -------------------------
+
+    private static String normConst(String s) {
+        if (s == null) return "";
+        String c = s.trim();
+        if (c.startsWith("Locators.")) c = c.substring("Locators.".length());
+        return c.trim().toUpperCase(Locale.ROOT);
     }
 
-    return Optional.empty();
-}
-
-private static int levenshtein(String a, String b) {
-    if (a == null) a = "";
-    if (b == null) b = "";
-    int n = a.length(), m = b.length();
-    int[] prev = new int[m + 1];
-    int[] cur = new int[m + 1];
-
-    for (int j = 0; j <= m; j++) prev[j] = j;
-
-    for (int i = 1; i <= n; i++) {
-        cur[0] = i;
-        char ca = a.charAt(i - 1);
-        for (int j = 1; j <= m; j++) {
-            int cost = (ca == b.charAt(j - 1)) ? 0 : 1;
-            cur[j] = Math.min(
-                    Math.min(cur[j - 1] + 1, prev[j] + 1),
-                    prev[j - 1] + cost
-            );
-        }
-        int[] tmp = prev; prev = cur; cur = tmp;
+   public List<String> listOcrLocatorConsts() {
+    List<String> out = new ArrayList<>();
+    for (String c : locatorConsts) {
+        if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.OCR) out.add(c);
     }
-    return prev[m];
-}
-private static Map<String, LocatorKind> parseLocatorKinds(Map<String, List<String>> blocksByConst) {
-    Map<String, LocatorKind> out = new LinkedHashMap<>();
-
-    for (var e : blocksByConst.entrySet()) {
-        String constName = e.getKey();
-        String joined = String.join("\n", e.getValue());
-
-        LocatorKind kind = LocatorKind.UNKNOWN;
-
-        // Match your Locators factory usage:
-        // point(...), region(...), template(...)
-       // Detect OCR first (so it doesn't get misclassified)
-if (joined.contains("ocrContains(") || joined.contains("new OcrContainsLocator")) kind = LocatorKind.OCR;
-else if (joined.contains("point(")) kind = LocatorKind.POINT;
-else if (joined.contains("region(")) kind = LocatorKind.REGION;
-else if (joined.contains("template(")) kind = LocatorKind.TEMPLATE;
-
-
-        out.put(constName, kind);
-    }
+    out.sort(String::compareTo);
     return out;
 }
 
-public boolean existsRegionLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-
-    if (uiRegionConsts.contains(constName)) return true; // raw region const allowed
-    return locatorKindByConst.getOrDefault(constName, LocatorKind.UNKNOWN) == LocatorKind.REGION;
+public boolean existsUiRegionConst(String constName) {
+    String c = normConst(constName);
+    if (c.isEmpty()) return false;
+    return uiRegionConsts.contains(c);
 }
 
-public boolean existsPointLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-
-    if (uiMapConsts.contains(constName)) return true; // raw point const allowed
-    return locatorKindByConst.getOrDefault(constName, LocatorKind.UNKNOWN) == LocatorKind.POINT;
-}
-
-public boolean existsTemplateLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-
-    if (uiTemplateConsts.contains(constName)) return true; // raw template const allowed
-    return locatorKindByConst.getOrDefault(constName, LocatorKind.UNKNOWN) == LocatorKind.TEMPLATE;
+public List<String> listUiRegionConsts() {
+    List<String> out = new ArrayList<>(uiRegionConsts);
+    out.sort(String::compareTo);
+    return out;
 }
 
 
-// helper reused by all suggestion paths
-private Optional<String> suggestClosestFromList(String needle, List<String> candidates) {
-    if (candidates.isEmpty()) return Optional.empty();
-
-    // 1) exact
-    for (String c : candidates) if (c.equals(needle)) return Optional.of(c);
-
-    // 2) contains / prefix
-    for (String c : candidates) if (c.contains(needle)) return Optional.of(c);
-    for (String c : candidates) if (needle.contains(c)) return Optional.of(c);
-    for (String c : candidates) if (c.startsWith(needle) || needle.startsWith(c)) return Optional.of(c);
-
-    // 3) Levenshtein
-    int bestScore = Integer.MAX_VALUE;
-    String best = null;
-
-    for (String c : candidates) {
-        int d = levenshtein(needle, c);
-        if (d < bestScore) {
-            bestScore = d;
-            best = c;
-        }
-    }
-
-    if (best != null && bestScore <= Math.max(2, needle.length() / 4)) {
-        return Optional.of(best);
-    }
-
-    return Optional.empty();
-}
-
-public Optional<String> suggestClosestConstOfKind(String input, LocatorKind requiredKind) {
-    if (input == null || input.isBlank()) return Optional.empty();
-    if (requiredKind == null || requiredKind == LocatorKind.UNKNOWN) return Optional.empty();
-
-    String needle = input.trim()
-            .replace("Locators.", "")
-            .toUpperCase(java.util.Locale.ROOT);
-
-    List<String> candidates = new ArrayList<>();
-
-    // Include raw Ui* consts as valid inputs too (universal)
-    switch (requiredKind) {
-        case POINT -> {
-            candidates.addAll(uiMapConsts);
-            for (String c : locatorConsts) {
-                if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.POINT) {
-                    candidates.add(c);
-                }
-            }
-        }
-        case REGION -> {
-            candidates.addAll(uiRegionConsts);
-            for (String c : locatorConsts) {
-                if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.REGION) {
-                    candidates.add(c);
-                }
-            }
-        }
-        case TEMPLATE -> {
-            candidates.addAll(uiTemplateConsts);
-            for (String c : locatorConsts) {
-                if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.TEMPLATE) {
-                    candidates.add(c);
-                }
-            }
-        }
-        case OCR -> {
-    for (String c : locatorConsts) {
-        if (locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.OCR) {
-            candidates.add(c);
-        }
-    }
-}
-
-        default -> { return Optional.empty(); }
-    }
-
-    // 1) exact
-    for (String c : candidates) if (c.equals(needle)) return Optional.of(c);
-
-    // 2) contains / prefix
-    for (String c : candidates) if (c.contains(needle)) return Optional.of(c);
-    for (String c : candidates) if (needle.contains(c)) return Optional.of(c);
-    for (String c : candidates) if (c.startsWith(needle) || needle.startsWith(c)) return Optional.of(c);
-
-    // 3) Levenshtein
-    int bestScore = Integer.MAX_VALUE;
-    String best = null;
-    for (String c : candidates) {
-        int d = levenshtein(needle, c);
-        if (d < bestScore) {
-            bestScore = d;
-            best = c;
-        }
-    }
-
-    if (best != null && bestScore <= Math.max(2, needle.length() / 4)) {
-        return Optional.of(best);
-    }
-
-    return Optional.empty();
-}
-
-// -------------------------
-// Locator const existence
-// -------------------------
-
-/** True if the const exists and is an OCR locator const (kind=OCR). */
-public boolean existsOcrLocatorConst(String constName) {
-    if (constName == null || constName.isBlank()) return false;
-
-    String c = constName.trim()
-            .replace("Locators.", "")
-            .toUpperCase(java.util.Locale.ROOT);
-
-    return locatorKindByConst.getOrDefault(c, LocatorKind.UNKNOWN) == LocatorKind.OCR;
-}
-
-
-// --- helpers ---
-
-private static String normalizeConst(String input) {
-    if (input == null) return "";
-    String s = input.trim();
-    if (s.startsWith("Locators.")) s = s.substring("Locators.".length());
-    return s.trim().toUpperCase(java.util.Locale.ROOT);
-}
 
 
 }

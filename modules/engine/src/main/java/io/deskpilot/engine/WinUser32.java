@@ -20,5 +20,6 @@ public interface WinUser32 extends StdCallLibrary {
     boolean SetForegroundWindow(HWND hWnd);
     boolean GetClientRect(HWND hWnd, RECT rect);
 boolean ClientToScreen(HWND hWnd, POINT point);
+short GetAsyncKeyState(int vKey);
 
 }

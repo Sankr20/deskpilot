@@ -102,5 +102,66 @@ public class WindowManager {
         if (hwnd != null) WinUser32.INSTANCE.SetForegroundWindow(hwnd);
     }
 
+ public static HWND pickWindowHandleOnClick(long timeoutMs) {
+    long deadline = System.currentTimeMillis() + timeoutMs;
+
+    // 1) ensure we start from released state
+    while (System.currentTimeMillis() < deadline) {
+        if (!isLeftMouseDown()) break;
+        sleep(15);
+    }
+
+    // 2) wait for mouse-down
+    POINT downPt = new POINT();
+    while (System.currentTimeMillis() < deadline) {
+        if (isLeftMouseDown()) {
+            WinUser32.INSTANCE.GetCursorPos(downPt);
+            break;
+        }
+        sleep(15);
+    }
+
+    if (downPt.x == 0 && downPt.y == 0 && System.currentTimeMillis() >= deadline) {
+        throw new RuntimeException("Attach cancelled: timed out waiting for click (" + timeoutMs + "ms)");
+    }
+
+    // 3) wait for mouse-up (so the click completes and foreground changes)
+    while (System.currentTimeMillis() < deadline) {
+        if (!isLeftMouseDown()) break;
+        sleep(15);
+    }
+
+    // 4) let Windows process activation
+    sleep(80);
+
+    // 5) prefer foreground (post-click), fallback to window-from-point
+    HWND fg = WinUser32.INSTANCE.GetForegroundWindow();
+    HWND fromPoint = WinUser32.INSTANCE.WindowFromPoint(downPt);
+
+    HWND picked = null;
+
+    if (fg != null) {
+        picked = toTopLevel(fg);
+    }
+    if (picked == null && fromPoint != null) {
+        picked = toTopLevel(fromPoint);
+    }
+    if (picked == null) {
+        picked = toTopLevel(WinUser32.INSTANCE.GetForegroundWindow());
+    }
+    return picked;
+}
+
+
+private static boolean isLeftMouseDown() {
+    final int VK_LBUTTON = 0x01;
+    // High-order bit set means key is down
+    return (WinUser32.INSTANCE.GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+}
+
+private static void sleep(long ms) {
+    try { Thread.sleep(ms); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+}
+
     
 }

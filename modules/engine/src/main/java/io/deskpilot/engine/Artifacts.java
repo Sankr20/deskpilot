@@ -11,16 +11,39 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Each step gets its own folder:
  *   runs/<runName>/<NN>-<label>/...
+ *
+ * PRD 2.2: step numbering must not collide with 01-startup when it exists.
  */
 public final class Artifacts {
 
     private final Path outDir;
-    private final AtomicInteger step = new AtomicInteger(0);
+    private final AtomicInteger step;
 
-    public Artifacts(Path outDir) {
-        if (outDir == null) throw new IllegalArgumentException("outDir is null");
-        this.outDir = outDir;
+    public Artifacts(Path outDir) throws Exception {
+    if (outDir == null) throw new IllegalArgumentException("outDir is null");
+    this.outDir = outDir;
+
+    int max = 0;
+
+    try (var stream = Files.list(outDir)) {
+        for (Path p : stream.toList()) {
+            if (!Files.isDirectory(p)) continue;
+
+            String name = p.getFileName().toString();
+
+            // match "NN-..."
+            if (name.length() >= 3 && Character.isDigit(name.charAt(0)) && Character.isDigit(name.charAt(1)) && name.charAt(2) == '-') {
+                try {
+                    int n = Integer.parseInt(name.substring(0, 2));
+                    if (n > max) max = n;
+                } catch (NumberFormatException ignore) {}
+            }
+        }
     }
+
+    this.step = new AtomicInteger(max);
+}
+
 
     public Path outDir() {
         return outDir;
