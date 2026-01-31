@@ -14,9 +14,11 @@ public final class Actions {
     private final ActionOptions options;
     private final ActionStep.Stabilizer stabilizer;
 
-    public Actions(DeskPilotSession s) {
-        this(s, ActionOptions.defaults(), null);
-    }
+public Actions(DeskPilotSession s) {
+    this(s, ActionOptions.defaults(), (ss) -> ss.stabilizeAttempt());
+}
+
+
 
     private Actions(DeskPilotSession s, ActionOptions options, ActionStep.Stabilizer stabilizer) {
         this.s = Objects.requireNonNull(s, "session is null");
@@ -50,11 +52,14 @@ public final class Actions {
                 locator,
                 options,
                 stabilizer,
-                (ss, r) -> ss.clickWin32(r.point),
+                (ss, r) -> {
+                    ss.stabilizeInStep("before-click");
+                    ss.clickWin32(r.point);
+                },
+
                 null,
                 ActionExpectation.MUST_EXIST,
-                ActionExpectation.MUST_HAVE_POINT
-        );
+                ActionExpectation.MUST_HAVE_POINT);
         return this;
     }
 
@@ -70,15 +75,15 @@ public final class Actions {
                 options,
                 stabilizer,
                 (ss, r) -> {
+                    ss.stabilizeInStep("before-paste");
                     ss.clickWin32(r.point);
-                    Thread.sleep(120);  // focus settle
                     ss.paste(text);
-                    Thread.sleep(80);   // allow UI update
+                    ss.stabilizeInStep("after-paste");
                 },
+
                 null,
                 ActionExpectation.MUST_EXIST,
-                ActionExpectation.MUST_HAVE_POINT
-        );
+                ActionExpectation.MUST_HAVE_POINT);
         return this;
     }
 
@@ -98,17 +103,16 @@ public final class Actions {
                 options,
                 stabilizer,
                 (ss, r) -> {
+                    ss.stabilizeInStep("before-fill");
                     ss.clickWin32(r.point);
-                    Thread.sleep(120);
                     ss.selectAll();
-                    Thread.sleep(60);
                     ss.paste(text);
-                    Thread.sleep(80);
+                    ss.stabilizeInStep("after-fill");
                 },
+
                 null,
                 ActionExpectation.MUST_EXIST,
-                ActionExpectation.MUST_HAVE_POINT
-        );
+                ActionExpectation.MUST_HAVE_POINT);
         return this;
     }
 
@@ -127,15 +131,15 @@ public final class Actions {
                 options,
                 stabilizer,
                 (ss, r) -> {
+                    ss.stabilizeInStep("before-type");
                     ss.clickWin32(r.point);
-                    Thread.sleep(120);
                     ss.typeText(text);
-                    Thread.sleep(80);
+                    ss.stabilizeInStep("after-type");
                 },
+
                 null,
                 ActionExpectation.MUST_EXIST,
-                ActionExpectation.MUST_HAVE_POINT
-        );
+                ActionExpectation.MUST_HAVE_POINT);
         return this;
     }
 
@@ -152,49 +156,44 @@ public final class Actions {
                 locator,
                 options,
                 stabilizer,
+                (ss, r) -> ss.stabilizeInStep("before-waitFor"),
                 null,
-                null,
-                ActionExpectation.MUST_EXIST
-        );
+                ActionExpectation.MUST_EXIST);
+
         return this;
     }
 
     public Actions clickAndWait(Locator clickTarget, Locator waitTarget) throws Exception {
-    Objects.requireNonNull(clickTarget, "clickTarget is null");
-    Objects.requireNonNull(waitTarget, "waitTarget is null");
+        Objects.requireNonNull(clickTarget, "clickTarget is null");
+        Objects.requireNonNull(waitTarget, "waitTarget is null");
 
-    click(clickTarget);
-    waitFor(waitTarget);
+        click(clickTarget);
+        waitFor(waitTarget);
 
-    return this;
-}
-public Actions fillAndWait(Locator fieldPoint, String text, Locator waitTarget) throws Exception {
-    Objects.requireNonNull(fieldPoint, "fieldPoint is null");
-    Objects.requireNonNull(waitTarget, "waitTarget is null");
+        return this;
+    }
 
-    fill(fieldPoint, text);
-    waitFor(waitTarget);
+    public Actions fillAndWait(Locator fieldPoint, String text, Locator waitTarget) throws Exception {
+        Objects.requireNonNull(fieldPoint, "fieldPoint is null");
+        Objects.requireNonNull(waitTarget, "waitTarget is null");
 
-    return this;
-}
+        fill(fieldPoint, text);
+        waitFor(waitTarget);
 
-public Actions fillClickAndWait(Locator fieldPoint, String text, Locator clickTarget, Locator waitTarget) throws Exception {
-    Objects.requireNonNull(fieldPoint, "fieldPoint is null");
-    Objects.requireNonNull(text, "text is null");
-    Objects.requireNonNull(clickTarget, "clickTarget is null");
-    Objects.requireNonNull(waitTarget, "waitTarget is null");
+        return this;
+    }
 
-    fill(fieldPoint, text);
-    clickAndWait(clickTarget, waitTarget);
+    public Actions fillClickAndWait(Locator fieldPoint, String text, Locator clickTarget, Locator waitTarget)
+            throws Exception {
+        Objects.requireNonNull(fieldPoint, "fieldPoint is null");
+        Objects.requireNonNull(text, "text is null");
+        Objects.requireNonNull(clickTarget, "clickTarget is null");
+        Objects.requireNonNull(waitTarget, "waitTarget is null");
 
-    return this;
-}
+        fill(fieldPoint, text);
+        clickAndWait(clickTarget, waitTarget);
 
-
-
-private static void shortSettle(long ms) {
-    try { Thread.sleep(ms); }
-    catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-}
+        return this;
+    }
 
 }

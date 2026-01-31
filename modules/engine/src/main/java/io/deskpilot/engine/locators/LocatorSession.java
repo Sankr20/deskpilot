@@ -15,10 +15,10 @@ public interface LocatorSession {
 
    Rectangle getClientRectWin32();
 
-String readTextNormalized(NormalizedRegion region) throws Exception;
+String readTextNormalized(io.deskpilot.engine.NormalizedRegion region) throws Exception;
 
 
-
+    
     Point resolvePointWin32(UiTarget target) throws Exception;
 
     /**
@@ -49,6 +49,7 @@ String readTextNormalized(NormalizedRegion region) throws Exception;
 
         @Override
 public String readTextNormalized(NormalizedRegion region) throws Exception {
+    
     return s.readTextNormalized(region);
 }
 

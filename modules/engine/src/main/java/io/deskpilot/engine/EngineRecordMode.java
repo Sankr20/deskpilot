@@ -81,9 +81,8 @@ public class EngineRecordMode {
         boolean overwriteConfirm = Boolean.getBoolean("deskpilot.record.overwriteConfirm");
 
         // ✅ IMPORTANT: after "step-scoped artifacts", do NOT call before() outside step()
-        DeskPilotSession s = DeskPilotSession.attachPickWindow("record-mode");
-        s.step("startup", s::before);
-
+       try(DeskPilotSession s = DeskPilotSession.attachPickWindow("record-mode")){
+        
         RecorderValidation validator = new RecorderValidation(RecorderPolicy.defaults());
         RecorderPolicy pol = RecorderPolicy.defaults();
 
@@ -195,40 +194,137 @@ if (!index.existsAnyLocatorConst(locatorConst)) {
 
 
 // -------------------------
-// W = WAIT (OCR locator FOUND)
-// -------------------------
-// -------------------------
-// W = WAIT (OCR locator FOUND) (no capture)
+// W = WAIT (OCR locator const + timeout)
+// UX hardening:
+// - allow user to type an OCR locator const OR a REGION const (then offer to create OCR locator)
+// - friendly suggestions for OCR locators
+// - timeout parsing: 5000, 5s, 2.5s, 800ms
 // -------------------------
 if (mode.equalsIgnoreCase("W")) {
+    String input = readConstOrExit(br,
+            "Wait for (OCR const OR REGION const) (e.g., STATUS_TEXT_SEARCHED or SEARCHSTATUSUPDATEREGION): ");
+    if (input == null) break;
+    if (input.equals("exit")) break;
+    if (input.isEmpty()) continue;
 
-    String ocrConst = readConstOrExit(br,
-            "OCR Locator const to wait for (e.g., STATUS_TEXT_SEARCHED or Locators.STATUS_TEXT_SEARCHED): ");
-    if (ocrConst == null) break;
-    if (ocrConst.equals("exit")) break;
-    if (ocrConst.isEmpty()) continue;
-
-    // ✅ typed validation: must be an OCR locator const
-    if (!index.existsOcrLocatorConst(ocrConst)) {
-        System.out.println("[REJECT] Not an OCR locator/const: " + ocrConst);
-        printSuggestionHintForKind(index, ocrConst, LocatorKind.OCR);
-        stats.reject("wrong_kind");
-        System.out.println();
+    // 1) If it's already an OCR locator => just record WAIT
+    if (index.existsOcrLocatorConst(input)) {
+        long timeoutMs = readTimeoutMsOrDefault(br, 5000);
+        if (timeoutMs < 0) break; // user typed exit or EOF
+        recordedSteps.add(new RecordedStep.WaitForFound(input, timeoutMs));
+        System.out.println("Recorded step: waitFor " + input + " (timeoutMs=" + timeoutMs + ")\n");
         continue;
     }
 
-    System.out.print("Timeout ms (default 10000): ");
-    String t = br.readLine();
-    if (t == null) break;
-    t = t.trim();
-    if (t.equalsIgnoreCase("exit")) break;
+    // 2) If user typed a REGION constant by mistake, offer to create OCR locator
+    if (index.existsRegionLocatorConst(input)) {
+        System.out.println("[INFO] '" + input + "' looks like a REGION, but WAIT requires an OCR locator.");
+        System.out.println("[INFO] I can create an OCR 'contains' locator in Locators.java for you.");
 
-    long timeoutMs = 10_000;
-    if (!t.isEmpty()) timeoutMs = Long.parseLong(t);
+        String yn = readLineOrExit(br, "Create OCR locator now? (y/N): ");
+        if (yn == null) break;
+        if (yn.equalsIgnoreCase("exit")) break;
 
-    recordedSteps.add(new RecordedStep.WaitForFound(ocrConst, timeoutMs));
-    System.out.println("Recorded step: waitFor " + ocrConst + " (" + timeoutMs + "ms)\n");
+        if (yn.equalsIgnoreCase("y") || yn.equalsIgnoreCase("yes")) {
+
+            // Need UiRegions const for ocrContains(..., UiRegions.X, ...)
+           // We accept either UiRegions.X or just X (where X exists in UiRegions AUTOGEN)
+
+String raw = input.trim();
+
+String uiRegionConst;
+if (raw.regionMatches(true, 0, "UiRegions.", 0, "UiRegions.".length())) {
+    uiRegionConst = raw.substring("UiRegions.".length()).trim();
+} else {
+    uiRegionConst = raw;
+}
+
+
+// Must exist as a UiRegions const to safely create OCR locator
+if (!index.existsUiRegionConst(uiRegionConst)) {
+    System.out.println("[REJECT] For creation, please enter a UiRegions const (e.g., UiRegions.SEARCHSTATUSUPDATEREGION or SEARCHSTATUSUPDATEREGION).");
+    System.out.println("[HINT] You entered: " + input);
+    printUiRegionsHintList(index);     // ✅ optional but helpful
+    stats.reject("need_uiregions_const");
+    System.out.println();
     continue;
+}
+
+
+            String expected = readLineOrExit(br, "Expected text contains (e.g., searched): ");
+            if (expected == null) break;
+            if (expected.equalsIgnoreCase("exit")) break;
+            expected = expected.trim();
+            if (expected.isEmpty()) {
+                System.out.println("[REJECT] expected text cannot be blank.\n");
+                stats.reject("blank_expected");
+                continue;
+            }
+
+            String rawName = readLineOrExit(br, "New OCR locator name (blank = auto): ");
+            if (rawName == null) break;
+            if (rawName.equalsIgnoreCase("exit")) break;
+
+            String name;
+            if (rawName.isBlank()) {
+                // simple auto name: status_text_<expected> (sanitized)
+                name = "status_text_" + expected.toLowerCase(java.util.Locale.ROOT)
+                        .replaceAll("[^a-z0-9]+", "_")
+                        .replaceAll("^_+|_+$", "");
+            } else {
+                name = rawName.trim();
+            }
+
+            // Write locator
+            UiFileWriter.upsertLocatorOcrContains(name, uiRegionConst, expected);
+
+            // reload index (so next checks/suggestions reflect it)
+            index = io.deskpilot.engine.recording.RegistryIndex.load(
+                    io.deskpilot.engine.recording.RegistryIndex.EnginePaths.fromRepoLayout()
+            );
+
+            String ocrConst = UiNaming.toConst(UiNaming.normalizeLabel(name, UiNaming.Kind.REGION));
+            System.out.println("[SAVED] Locators OCR: " + ocrConst + " (region=" + uiRegionConst + ", contains=\"" + expected + "\")");
+
+            long timeoutMs = readTimeoutMsOrDefault(br, 5000);
+            if (timeoutMs < 0) break;
+
+            recordedSteps.add(new RecordedStep.WaitForFound(ocrConst, timeoutMs));
+            System.out.println("Recorded step: waitFor " + ocrConst + " (timeoutMs=" + timeoutMs + ")\n");
+            continue;
+        }
+
+        // user said no
+printSuggestionHintForKind(index, input, LocatorKind.OCR);
+printOcrLocatorHintList(index);   // ✅ add here so Flow-3 prints it
+stats.reject("not_ocr");
+System.out.println();
+continue;
+
+
+    }
+
+    // 3) Otherwise: unknown / wrong kind
+    System.out.println("[REJECT] Not an OCR locator const: " + input);
+
+    // More helpful: if they typed something that exists but is POINT/TEMPLATE, we can hint too.
+    if (index.existsPointLocatorConst(input)) {
+        System.out.println("[HINT] That looks like a POINT const. WAIT needs OCR (created with ocrContains).");
+    } else if (index.existsTemplateLocatorConst(input)) {
+        System.out.println("[HINT] That looks like a TEMPLATE const. WAIT needs OCR (created with ocrContains).");
+    } else if (index.existsAnyLocatorConst(input)) {
+        System.out.println("[HINT] That const exists, but it’s not OCR.");
+    } else {
+        System.out.println("[HINT] That const doesn't exist.");
+    }
+
+printSuggestionHintForKind(index, input, LocatorKind.OCR);
+printOcrLocatorHintList(index);   // ✅ add here too
+stats.reject("not_ocr");
+System.out.println();
+continue;
+
+
 }
 
 
@@ -617,7 +713,7 @@ if (!index.existsPointLocatorConst(fieldConst)) {
         }
 
         System.out.println("Record Mode ended.");
-    }
+    }}
 
     private static String buildCollisionHint(String constName, String kind) {
         return "Choose a different name (e.g., add _alt/_v2), OR enable overwrite with -Ddeskpilot.record.allowOverwrite=true. "
@@ -770,8 +866,100 @@ private static void printSuggestionHintAny(RegistryIndex index, String input) {
     );
 }
 
+private static String readLineOrExit(BufferedReader br, String prompt) throws IOException {
+    System.out.print(prompt);
+    String raw = br.readLine();
+    if (raw == null) return null;
+
+    raw = raw.trim();
+    if (raw.equalsIgnoreCase("exit")) return "exit";
+    return raw;
+}
+
+private static boolean isUiRegionsConst(String c) {
+    if (c == null) return false;
+    String s = c.trim();
+    // input was normalized already, but allow UiRegions.X
+    return s.startsWith("UIREGIONS.") || s.startsWith("UiRegions.");
+}
+
+private static boolean isUiRegionsConst(RegistryIndex index, String input) {
+    if (input == null) return false;
+    String c = input.trim();
+    if (c.startsWith("UiRegions.")) c = c.substring("UiRegions.".length());
+    c = c.trim().toUpperCase(java.util.Locale.ROOT);
+    return index.existsUiRegionConst(c); // ✅ you may need to add this method
+}
 
 
+private static long readTimeoutMsOrDefault(BufferedReader br, long defaultMs) throws IOException {
+    String raw = readLineOrExit(br, "Timeout (default " + defaultMs + "ms). Examples: 5000, 5s, 800ms: ");
+    if (raw == null) return -1;
+    if (raw.equalsIgnoreCase("exit")) return -1;
+    raw = raw.trim();
+    if (raw.isBlank()) return defaultMs;
+
+    try {
+        return parseDurationToMs(raw);
+    } catch (Exception e) {
+        System.out.println("[REJECT] Invalid timeout: '" + raw + "'. Use 5000, 5s, 800ms.\n");
+        return defaultMs; // safe fallback
+    }
+}
+
+private static long parseDurationToMs(String raw) {
+    String s = raw.trim().toLowerCase(java.util.Locale.ROOT);
+
+    if (s.endsWith("ms")) {
+        return Long.parseLong(s.substring(0, s.length() - 2).trim());
+    }
+
+    if (s.endsWith("s")) {
+        String n = s.substring(0, s.length() - 1).trim();
+        double seconds = Double.parseDouble(n);
+        return (long) Math.round(seconds * 1000.0);
+    }
+
+    // plain number = ms (keep your current behavior)
+    return Long.parseLong(s);
+}
+
+private static void printOcrLocatorHintList(RegistryIndex index) {
+    List<String> ocr = index.listOcrLocatorConsts();
+    if (ocr == null || ocr.isEmpty()) {
+        System.out.println("[HINT] No OCR locators exist yet. Create one by typing W then a UiRegions const and choosing 'y'.");
+        return;
+    }
+
+    System.out.println("[HINT] Available OCR locators:");
+    for (int i = 0; i < Math.min(8, ocr.size()); i++) {
+        System.out.println("  - " + ocr.get(i));
+    }
+    if (ocr.size() > 8) {
+        System.out.println("  ... (" + ocr.size() + " total)");
+    }
+}
+
+
+
+private static void printUiRegionsHintList(RegistryIndex index) {
+    try {
+        var regs = index.listUiRegionConsts();
+        if (regs == null || regs.isEmpty()) {
+            System.out.println("[HINT] No UiRegions constants exist yet. Record a region first (R).");
+            return;
+        }
+
+        int n = Math.min(6, regs.size());
+        System.out.println("[HINT] UiRegions constants (" + regs.size() + "):");
+        for (int i = 0; i < n; i++) {
+            System.out.println("       - " + regs.get(i));
+        }
+        if (regs.size() > n) System.out.println("       ... +" + (regs.size() - n) + " more");
+    } catch (Exception ignore) {
+        // UX only
+    }
+}
 
 
 }

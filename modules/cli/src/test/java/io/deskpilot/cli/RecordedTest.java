@@ -1,10 +1,13 @@
-package com.example;
+package io.deskpilot.cli;
 
 import io.deskpilot.engine.Locators;
 import io.deskpilot.engine.NormalizedRegion;
 import io.deskpilot.testkit.BaseDeskPilotTestJUnit5;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 
+
+@Disabled("Interactive UI test - run manually")
 public class RecordedTest extends BaseDeskPilotTestJUnit5 {
 
     @Test

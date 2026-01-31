@@ -21,3 +21,11 @@ Thumbs.db
 # Assembly outputs
 **/*-dist.zip
 
+# Build outputs / bytecode
+dist/
+**/dist/
+*.class
+META-INF/
+
+# Generated recorder tests (local artifacts)
+modules/engine/src/test/java/io/deskpilot/tests/generated/

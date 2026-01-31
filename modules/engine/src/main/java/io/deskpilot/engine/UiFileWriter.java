@@ -1,7 +1,8 @@
 package io.deskpilot.engine;
 
-import io.deskpilot.engine.targets.TemplateTarget;
+import io.deskpilot.engine.locators.Locator;
 import io.deskpilot.engine.targets.SearchAreaPct;
+import io.deskpilot.engine.targets.TemplateTarget;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,18 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Writes and reads AUTOGEN constants for:
+ * - UiMap.java      (UiTarget points)
+ * - UiRegions.java  (NormalizedRegion)
+ * - UiTemplates.java(TemplateTarget)
+ * - Locators.java   (Locator constants that reference UiMap/UiRegions/UiTemplates)
+ *
+ * Design:
+ * - AUTOGEN blocks are parsed as "javadoc + public static final ... ;"
+ * - upserts are stable and sorted by const name
+ * - normalization pass keeps labels consistent and snake_case-friendly
+ */
 public final class UiFileWriter {
     private UiFileWriter() {}
 
@@ -104,6 +117,12 @@ public final class UiFileWriter {
         Files.write(file, updated, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
+    /**
+     * Adds an image path variant to an existing template constant by:
+     * - parsing existing TemplateTarget.of("label","p1","p2"...)
+     * - merging newResourcePath in insertion-order
+     * - preserving minScore + searchAreaPct/searchArea
+     */
     public static void addTemplateVariant(String rawName, String newResourcePath) throws IOException {
         String label = UiNaming.normalizeLabel(rawName, UiNaming.Kind.TEMPLATE);
         String constName = UiNaming.toConst(label);
@@ -152,7 +171,6 @@ public final class UiFileWriter {
 
         Path file = resolveEngineJavaFile("Locators.java");
         ensureParent(file);
-
         if (!Files.exists(file)) throw new RuntimeException("Locators.java not found at: " + file.toAbsolutePath());
 
         List<String> newBlock = List.of(
@@ -174,7 +192,6 @@ public final class UiFileWriter {
 
         Path file = resolveEngineJavaFile("Locators.java");
         ensureParent(file);
-
         if (!Files.exists(file)) throw new RuntimeException("Locators.java not found at: " + file.toAbsolutePath());
 
         List<String> newBlock = List.of(
@@ -196,7 +213,6 @@ public final class UiFileWriter {
 
         Path file = resolveEngineJavaFile("Locators.java");
         ensureParent(file);
-
         if (!Files.exists(file)) throw new RuntimeException("Locators.java not found at: " + file.toAbsolutePath());
 
         List<String> newBlock = List.of(
@@ -212,8 +228,46 @@ public final class UiFileWriter {
         Files.write(file, updated, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
+    /**
+     * Writes an OCR locator constant into Locators AUTOGEN:
+     *   ocrContains("label", UiRegions.REGION_CONST, "containsText")
+     *
+     * Caller may pass uiRegionConst as "UiRegions.X" or just "X".
+     */
+    public static void upsertLocatorOcrContains(String rawName,
+                                               String uiRegionConst,
+                                               String containsText) throws IOException {
+        Objects.requireNonNull(rawName, "rawName is null");
+        Objects.requireNonNull(uiRegionConst, "uiRegionConst is null");
+        Objects.requireNonNull(containsText, "containsText is null");
+
+        // Normalize OCR locator label as REGION-kind (it is tied to a region)
+        String label = UiNaming.normalizeLabel(rawName, UiNaming.Kind.REGION);
+        String constName = UiNaming.toConst(label);
+
+        String regionConst = uiRegionConst.trim();
+        if (regionConst.startsWith("UiRegions.")) regionConst = regionConst.substring("UiRegions.".length());
+        regionConst = regionConst.trim();
+
+        Path file = resolveEngineJavaFile("Locators.java");
+        ensureParent(file);
+        if (!Files.exists(file)) throw new RuntimeException("Locators.java not found at: " + file.toAbsolutePath());
+
+        List<String> newBlock = List.of(
+                "",
+                "    /** " + escapeJava(label) + " */",
+                "    public static final Locator " + constName + " =",
+                "            ocrContains(\"" + escapeJava(label) + "\", UiRegions." + regionConst + ", \"" + escapeJava(containsText) + "\");"
+        );
+
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<String> updated = upsertConstBlock(lines, "Locator", constName, newBlock);
+        updated = normalizeAutogenFile("Locators.java", updated);
+        Files.write(file, updated, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+    }
+
     // -------------------------
-    // Public API (read helpers for 13B)
+    // Public API (read helpers)
     // -------------------------
 
     /** Checks if const exists in AUTOGEN for the given file (UiMap/UiRegions/UiTemplates/Locators). */
@@ -325,6 +379,7 @@ public final class UiFileWriter {
 
             List<String> block = new ArrayList<>();
 
+            // Optional Javadoc
             if (autogenLines.get(i).trim().startsWith("/**")) {
                 while (i < autogenLines.size()) {
                     block.add(autogenLines.get(i));
@@ -388,11 +443,13 @@ public final class UiFileWriter {
     }
 
     // -------------------------
-    // Point/Region parsing helpers (13B)
+    // Point/Region parsing helpers
     // -------------------------
 
-    private static final Pattern P_UITARGET = Pattern.compile("new\\s+UiTarget\\(\"[^\"]*\"\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*\\)");
-    private static final Pattern P_REGION = Pattern.compile("new\\s+NormalizedRegion\\(([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*\\)");
+    private static final Pattern P_UITARGET =
+            Pattern.compile("new\\s+UiTarget\\(\"[^\"]*\"\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*\\)");
+    private static final Pattern P_REGION =
+            Pattern.compile("new\\s+NormalizedRegion\\(([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*,\\s*([-0-9.]+)\\s*\\)");
 
     private static double[] parsePointFromBlock(List<String> blockLines) {
         String joined = String.join("\n", blockLines);
@@ -422,7 +479,7 @@ public final class UiFileWriter {
     }
 
     // -------------------------
-    // Template parsing helpers
+    // Template helpers
     // -------------------------
 
     private static String[] cleanedPaths(TemplateTarget t) {
@@ -453,7 +510,7 @@ public final class UiFileWriter {
     }
 
     // -------------------------
-    // Template variant block parsing (existing behavior preserved)
+    // Template variant parsing (preserve older behavior)
     // -------------------------
 
     private static final class ParsedTemplate {
@@ -483,6 +540,7 @@ public final class UiFileWriter {
             String tail = joined.substring(ofIdx);
             List<String> quoted = extractQuotedStrings(tail);
 
+            // quoted[0] is label, quoted[1..] are paths
             if (quoted.size() >= 2) {
                 for (int i = 1; i < quoted.size(); i++) {
                     String p = unescapeJava(quoted.get(i));
@@ -524,13 +582,14 @@ public final class UiFileWriter {
             }
         }
 
+        // fallback for older formats
         if (paths.isEmpty()) {
             for (String l : blockLines) {
-                if (l.contains("icons/") && l.contains("\"")) {
+                if (l.contains("\"")) {
                     List<String> q = extractQuotedStrings(l);
                     for (String s : q) {
                         String u = unescapeJava(s);
-                        if (u.contains("icons/")) paths.add(u);
+                        if (!u.isBlank()) paths.add(u);
                     }
                 }
             }
@@ -641,13 +700,14 @@ public final class UiFileWriter {
     }
 
     // -------------------------
-    // Milestone 11: AUTOGEN normalization pass (unchanged)
+    // Milestone 11: AUTOGEN normalization pass
     // -------------------------
 
     private static final Pattern P_INLINE_JAVADOC = Pattern.compile("^\\s*/\\*\\*\\s*(.*?)\\s*\\*/\\s*$");
     private static final Pattern P_UITARGET_LABEL = Pattern.compile("new\\s+UiTarget\\(\"([^\"]*)\"");
-    private static final Pattern P_REGION_LABEL = Pattern.compile("region\\(\"([^\"]*)\"");
+    private static final Pattern P_REGION_LABEL   = Pattern.compile("region\\(\"([^\"]*)\"");
     private static final Pattern P_TEMPLATE_OF_LABEL = Pattern.compile("TemplateTarget\\.of\\(\"([^\"]*)\"");
+    private static final Pattern P_OCRCONTAINS_LABEL = Pattern.compile("ocrContains\\(\"([^\"]*)\"");
 
     static List<String> normalizeAutogenFile(String fileName, List<String> lines) {
         if (lines == null || lines.isEmpty()) return lines;
@@ -659,6 +719,7 @@ public final class UiFileWriter {
         UiNaming.Kind defaultKind = UiNaming.Kind.POINT;
         if ("UiRegions.java".equals(fileName)) defaultKind = UiNaming.Kind.REGION;
         else if ("UiTemplates.java".equals(fileName)) defaultKind = UiNaming.Kind.TEMPLATE;
+        else if ("Locators.java".equals(fileName)) defaultKind = UiNaming.Kind.REGION; // safe default
 
         List<String> out = new ArrayList<>(lines.size());
 
@@ -670,6 +731,7 @@ public final class UiFileWriter {
                 continue;
             }
 
+            // Normalize inline javadoc: /** something */
             Matcher jd = P_INLINE_JAVADOC.matcher(line);
             if (jd.matches()) {
                 String raw = jd.group(1);
@@ -687,16 +749,23 @@ public final class UiFileWriter {
                 out.add(replaceFirstStringLiteral(line, P_UITARGET_LABEL, UiNaming.Kind.POINT));
                 continue;
             }
+
             if ("UiRegions.java".equals(fileName)) {
+                // region labels are not embedded in NormalizedRegion ctor; keep line as-is
                 out.add(line);
                 continue;
             }
+
             if ("UiTemplates.java".equals(fileName)) {
                 out.add(replaceFirstStringLiteral(line, P_TEMPLATE_OF_LABEL, UiNaming.Kind.TEMPLATE));
                 continue;
             }
+
             if ("Locators.java".equals(fileName)) {
-                out.add(replaceFirstStringLiteral(line, P_REGION_LABEL, UiNaming.Kind.REGION));
+                // normalize label in region("...") and ocrContains("...") string literal
+                String v = replaceFirstStringLiteral(line, P_REGION_LABEL, UiNaming.Kind.REGION);
+                v = replaceFirstStringLiteral(v, P_OCRCONTAINS_LABEL, UiNaming.Kind.REGION);
+                out.add(v);
                 continue;
             }
 
@@ -718,14 +787,19 @@ public final class UiFileWriter {
         return line.substring(0, m.start(1)) + escapeJava(norm) + line.substring(m.end(1));
     }
 
+    /**
+     * For Locators.java: decide the label kind based on the factory used in the following lines.
+     * OCR locators behave like REGION-kind labels.
+     */
     private static UiNaming.Kind inferKindForLocators(String fileName, UiNaming.Kind fallback, List<String> lines, int idx) {
         if (!"Locators.java".equals(fileName)) return fallback;
 
-        for (int j = idx; j < Math.min(lines.size(), idx + 6); j++) {
+        for (int j = idx; j < Math.min(lines.size(), idx + 10); j++) {
             String l = lines.get(j);
-            if (l.contains("region(") || l.contains("Locator")) return UiNaming.Kind.REGION;
-            if (l.contains("template(") || l.contains("Template")) return UiNaming.Kind.TEMPLATE;
-            if (l.contains("point(") || l.contains("Locator")) return UiNaming.Kind.POINT;
+            if (l.contains("ocrContains(") || l.contains("new OcrContainsLocator")) return UiNaming.Kind.REGION;
+            if (l.contains("region(")) return UiNaming.Kind.REGION;
+            if (l.contains("template(")) return UiNaming.Kind.TEMPLATE;
+            if (l.contains("point(")) return UiNaming.Kind.POINT;
         }
         return fallback;
     }

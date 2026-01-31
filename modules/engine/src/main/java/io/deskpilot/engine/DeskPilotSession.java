@@ -23,7 +23,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
 
-import javax.swing.SwingUtilities;
 
 /**
  * Milestone 14: Locator-only execution.
@@ -71,13 +70,13 @@ private static final int OCR_MIN_CROP_H = 18;
     return attachPickWindow(RunOptions.builder().runName(runFolder).build());
 }
 
+
 public static DeskPilotSession attachPickWindow(RunOptions options) throws Exception {
     DpiAwareness.enable();
 
-    System.out.println("Click on the target window in 5 seconds...");
-    Thread.sleep(5000);
-
-    HWND hwnd = WindowManager.pickWindowHandle();
+    long timeoutMs = options.attachTimeoutMs();
+    System.out.println("Click the target window to attach (timeout " + (timeoutMs / 1000) + "s)...");
+    HWND hwnd = WindowManager.pickWindowHandleOnClick(timeoutMs);
     hwnd = WindowManager.toTopLevel(hwnd);
 
     String title = WindowManager.getWindowTitle(hwnd);
@@ -92,12 +91,34 @@ public static DeskPilotSession attachPickWindow(RunOptions options) throws Excep
         Thread.sleep(300);
     }
 
-    Path outDir = options.runDir();
-    Files.createDirectories(outDir);
-    Artifacts artifacts = new Artifacts(outDir);
-    DesktopDriver driver = new DesktopDriver();
-    return new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts, options);
+    Path outDir = RunOptions.prepareRunFolder(options);
+
+// Ensure startup dir exists (important)
+Path startupDir = outDir.resolve("01-startup");
+Files.createDirectories(startupDir);
+
+// Write attach diagnostics
+Files.writeString(startupDir.resolve("attach.txt"),
+        "title=" + title + System.lineSeparator() +
+        "clientRectWin32=" + clientRectWin32 + System.lineSeparator() +
+        "clientRectRobot=" + clientRectRobot + System.lineSeparator()
+);
+
+Artifacts artifacts = new Artifacts(outDir);
+DesktopDriver driver = new DesktopDriver();
+
+DeskPilotSession s = new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts, options);
+
+// ✅ make attach stabilization step-scoped
+s.step("startup", () -> {
+    s.before();                 // gives you a baseline screenshot in 01-startup
+    s.stabilizeInStep("attach");
+});
+
+return s;
 }
+
+
 
 
     public Actions actions() {
@@ -146,6 +167,11 @@ public static DeskPilotSession attachPickWindow(RunOptions options) throws Excep
         this.ocrConfig = cfg;
         return this;
     }
+
+    private BufferedImage captureClient() {
+    return driver.screenshot(clientRectRobot);
+}
+
 
     // -------------------------
     // Evidence
@@ -286,28 +312,27 @@ public static DeskPilotSession attachPickWindow(RunOptions options) throws Excep
     // Low-level actions
     // -------------------------
 
-    public DeskPilotSession clickWin32(Point win32) throws Exception {
-        if (win32 == null)
-            throw new IllegalArgumentException("win32 is null");
-        driver.click(win32);
-        waitForUiStable(2000);
-        return this;
-    }
+  public DeskPilotSession clickWin32(Point win32) throws Exception {
+    if (win32 == null) throw new IllegalArgumentException("win32 is null");
+    driver.click(win32);
+    return this;
+}
 
-    public DeskPilotSession clearFocused() throws InterruptedException {
-        Thread.sleep(120);
-        driver.keyCombo(java.awt.event.KeyEvent.VK_CONTROL, java.awt.event.KeyEvent.VK_A);
-        driver.keyTap(java.awt.event.KeyEvent.VK_BACK_SPACE);
-        Thread.sleep(120);
-        return this;
-    }
+public DeskPilotSession clearFocused() {
+    driver.delay(120);
+    driver.keyCombo(java.awt.event.KeyEvent.VK_CONTROL, java.awt.event.KeyEvent.VK_A);
+    driver.keyTap(java.awt.event.KeyEvent.VK_BACK_SPACE);
+    driver.delay(120);
+    return this;
+}
 
-    public DeskPilotSession paste(String text) throws Exception {
-        System.out.println("Pasting: " + text);
-        driver.pasteText(text);
-        waitForUiStable(2000);
-        return this;
-    }
+
+ public DeskPilotSession paste(String text) throws Exception {
+    System.out.println("Pasting: " + text);
+    driver.pasteText(text);
+    return this;
+}
+
 
     public DeskPilotSession selectAll() throws Exception {
     driver.selectAll();       // implement in DesktopDriver
@@ -315,18 +340,16 @@ public static DeskPilotSession attachPickWindow(RunOptions options) throws Excep
 }
 
 
-    public DeskPilotSession type(String text) throws InterruptedException {
-        System.out.println("Typing: " + text);
-        driver.typeText(text);
-        Thread.sleep(250);
-        return this;
-    }
+public DeskPilotSession type(String text) throws Exception {
+    return typeText(text);
+}
 
-    public DeskPilotSession typeText(String text) throws Exception {
+
+public DeskPilotSession typeText(String text) throws Exception {
     driver.typeText(text);
-    waitForUiStable(2000);
     return this;
 }
+
 
 public void saveStepText(String name, String content) throws Exception {
     if (currentStepDir == null) return;
@@ -557,11 +580,22 @@ try {
     var res = io.deskpilot.engine.ocr.OcrPipeline.preprocess(cropped, cfg);
 
     // ✅ preset-tagged artifacts (optional but extremely helpful)
-    String preset = (cfg != null && cfg.preset != null) ? cfg.preset.name().toLowerCase() : "default";
+String preset = (cfg != null && cfg.preset != null) ? cfg.preset.name().toLowerCase() : "default";
+
+// Always keep the *latest* OCR inputs (overwrite each attempt)
+try {
+    saveStepPng("ocr_crop_last_" + preset + ".png", cropped);
+    saveStepPng("ocr_pre_last_" + preset + ".png", res.preprocessed);
+} catch (Exception ignore) {}
+
+// Verbose per-attempt dumps only when enabled
+if (Boolean.getBoolean("deskpilot.ocr.dump")) {
     try {
-        saveStepPng("ocr_crop_" + preset + ".png", cropped);
-        saveStepPng("ocr_pre_" + preset + ".png", res.preprocessed);
+        String base = "ocr_attempt_" + System.currentTimeMillis() + "_" + preset;
+        saveStepPng(base + "_crop.png", cropped);
+        saveStepPng(base + "_pre.png", res.preprocessed);
     } catch (Exception ignore) {}
+}
 
     return new OcrCapture(cropped, res.preprocessed, res.scaleFactor, regionWin32, regionRobot, clamped);
 }
@@ -1011,17 +1045,22 @@ public void step(String stepName, StepBody body) throws Exception {
         System.out.println("Saved TEMPLATE PNG to: " + out.toAbsolutePath());
     }
 
-    @Override
+ // in DeskPilotSession fields
+private boolean closed = false;
+
+@Override
 public void close() {
+    if (closed) return;          // ✅ idempotent
+    closed = true;
+
     try {
-        // Keep teardown step-scoped like the rest of the engine
         step("teardown", this::after);
     } catch (Exception e) {
-        // Don't throw from close() (it can mask the real failure)
         System.err.println("DeskPilotSession.close() failed: " + e.getMessage());
         e.printStackTrace();
     }
 }
+
 
 public DeskPilotSession restoreAndBringToFront() throws Exception {
     // If you already have bringToFront(), call it here.
@@ -1031,23 +1070,6 @@ public DeskPilotSession restoreAndBringToFront() throws Exception {
     return this;
 }
 
-public DeskPilotSession stabilize() throws Exception {
-    // 1) bring target window to front (and restore if minimized if your WindowManager supports it)
-    try {
-        WindowManager.bringToFront(hwnd);
-    } catch (Exception ignore) {
-        // if anything goes wrong, we still continue to capture
-    }
-
-    // 2) small settle delay (locked default)
-    try { Thread.sleep(150); }
-    catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-
-    // 3) capture once AFTER stabilization
-    before();
-
-    return this;
-}
 
 public NormalizedRegion pickRegion() throws Exception {
     System.out.println("Drag to select region (ESC to cancel) ...");
@@ -1065,6 +1087,72 @@ public NormalizedRegion pickRegion() throws Exception {
 
     return r;
 }
+
+public void stabilizeInStep(String reason) throws Exception {
+    StabilityOptions opt = runOptions.stability();
+    if (opt == null || !opt.enabled) return;
+
+    if (opt.bringToFront) {
+        WindowManager.bringToFront(hwnd);
+        driver.delay(120);
+    }
+
+    long start = System.currentTimeMillis();
+    long deadline = start + opt.timeoutMs;
+
+    BufferedImage prev = captureClient();
+    saveStepPng("stabilize_before.png", prev);
+
+    long stableSince = -1L;
+    int iter = 0;
+
+    while (System.currentTimeMillis() < deadline) {
+        driver.delay((int) opt.pollMs);
+
+        BufferedImage cur = captureClient();
+        double diff = ImageDiff.diffRatio(prev, cur);
+
+        iter++;
+        saveStepText(String.format("stabilize_diff_%02d.txt", iter),
+                "diff=" + diff + System.lineSeparator() +
+                "threshold=" + opt.diffThreshold + System.lineSeparator());
+
+        if (diff <= opt.diffThreshold) {
+            if (stableSince < 0) stableSince = System.currentTimeMillis();
+            long stableFor = System.currentTimeMillis() - stableSince;
+
+            if (stableFor >= opt.stableForMs) {
+                saveStepPng("stabilize_stable.png", cur);
+                saveStepText("stabilize_timing.txt",
+                        "reason=" + reason + System.lineSeparator() +
+                        "elapsedMs=" + (System.currentTimeMillis() - start) + System.lineSeparator());
+                return;
+            }
+        } else {
+            stableSince = -1L;
+        }
+
+        prev = cur;
+    }
+
+    saveStepPng("stabilize_timeout_last.png", prev);
+    throw new RuntimeException("UI did not stabilize within timeoutMs=" + opt.timeoutMs + " (reason=" + reason + ")");
+}
+
+public void stabilizeAttempt() {
+    try {
+        StabilityOptions opt = runOptions.stability();
+        if (opt == null || !opt.enabled) return;
+
+        if (opt.bringToFront) {
+            WindowManager.bringToFront(hwnd);
+        }
+        driver.delay(80); // tiny settle, no artifacts
+    } catch (Exception ignored) {
+        // never fail locate attempts due to stabilizer
+    }
+}
+
 
 
 }

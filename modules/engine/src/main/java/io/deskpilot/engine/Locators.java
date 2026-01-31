@@ -6,7 +6,6 @@ import io.deskpilot.engine.locators.RegionLocator;
 import io.deskpilot.engine.locators.TemplateLocator;
 import io.deskpilot.engine.targets.TemplateTarget;
 import io.deskpilot.engine.locators.OcrContainsLocator;
-
 import java.util.Objects;
 
 /**
@@ -22,6 +21,7 @@ public final class Locators {
     // -------------------------
     // Factory helpers
     // -------------------------
+
 
     /** Point (UiTarget) */
     public static Locator point(UiTarget t) {
@@ -46,21 +46,17 @@ public final class Locators {
     public static Locator point(String name, double xPct, double yPct) {
         return point(new UiTarget(name, xPct, yPct));
     }
-    public static Locator ocrContains(String label, NormalizedRegion region, String expectedContains) {
+public static Locator ocrContains(String label, NormalizedRegion region, String expectedContains) {
     if (label == null || label.isBlank()) throw new IllegalArgumentException("label blank");
     Objects.requireNonNull(region, "region is null");
     Objects.requireNonNull(expectedContains, "expectedContains is null");
     return new OcrContainsLocator(label, region, expectedContains);
 }
-        /** status_text_searched */
-public static final Locator STATUS_TEXT_SEARCHED =
-        ocrContains("status_text_searched", UiRegions.SEARCHSTATUSUPDATEREGION, "searched");
 
-
-    // --- DESKPILOT:AUTOGEN:START
-    /** btn_point */
-    public static final Locator BTNPOINT =
-            point(UiMap.BTNPOINT);
+// --- DESKPILOT:AUTOGEN:START
+/** btn_point */
+public static final Locator BTNPOINT =
+        point(UiMap.BTNPOINT);
     /** btn_region */
     public static final Locator BTNREGION =
             region("btn_region", UiRegions.BTNREGION);
@@ -73,7 +69,6 @@ public static final Locator STATUS_TEXT_SEARCHED =
     /** button_search */
     public static final Locator BUTTON_SEARCH =
             point(UiMap.BUTTON_SEARCH);
-
     /** inputpoint */
     public static final Locator INPUTPOINT =
             point(UiMap.INPUTPOINT);
@@ -101,6 +96,10 @@ public static final Locator STATUS_TEXT_SEARCHED =
     /** search_btn_point */
     public static final Locator SEARCH_BTN_POINT =
             point(UiMap.SEARCH_BTN_POINT);
+
+    /** status_text_searched */
+    public static final Locator STATUS_TEXT_SEARCHED =
+            ocrContains("status_text_searched", UiRegions.SEARCHSTATUSUPDATEREGION, "searched");
     // --- DESKPILOT:AUTOGEN:END
 
 

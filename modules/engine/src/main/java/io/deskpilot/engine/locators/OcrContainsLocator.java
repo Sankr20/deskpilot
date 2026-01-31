@@ -2,55 +2,52 @@ package io.deskpilot.engine.locators;
 
 import io.deskpilot.engine.NormalizedRegion;
 
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * OCR polling locator:
+ * - ONE OCR read per locate() call
+ * - returns FOUND if normalized OCR text contains expected substring (case-insensitive)
+ * - ActionStep handles retries/timeouts (the "wait")
+ */
 public final class OcrContainsLocator implements Locator {
 
     private final String label;
     private final NormalizedRegion region;
-    private final String expectedContainsNorm;
+    private final String expectedLower;
 
-    public OcrContainsLocator(String label, NormalizedRegion region, String expectedContains) {
+    public OcrContainsLocator(String label, NormalizedRegion region, String expected) {
         this.label = Objects.requireNonNull(label, "label is null");
         this.region = Objects.requireNonNull(region, "region is null");
-        this.expectedContainsNorm = normalize(Objects.requireNonNull(expectedContains, "expectedContains is null"));
+
+        Objects.requireNonNull(expected, "expected is null");
+        String t = expected.trim();
+        if (t.isEmpty()) throw new IllegalArgumentException("expected is blank");
+
+        this.expectedLower = t.toLowerCase(Locale.ROOT);
     }
 
-    @Override
-    public LocatorKind kind() {
-        return LocatorKind.OCR;
+    @Override public String label() { return label; }
+
+    @Override public LocatorKind kind() { return LocatorKind.OCR; }
+
+@Override
+public LocatorResult locate(LocatorSession s) throws Exception {
+    String actual = s.readTextNormalized(region);
+    String actualLower = (actual == null ? "" : actual.toLowerCase(Locale.ROOT));
+
+    boolean ok = !actualLower.isEmpty() && actualLower.contains(expectedLower);
+
+    java.util.Map<String,String> diag = new java.util.LinkedHashMap<>();
+    diag.put("expectedContains", expectedLower);
+    diag.put("actual", actual == null ? "" : actual);
+    diag.put("region", String.valueOf(region));
+
+    if (ok) {
+        return LocatorResult.found(kind(), label, null, null, -1, diag);
     }
+    return LocatorResult.notFound(kind(), label, diag);
+}
 
-    @Override
-    public String label() {
-        return label;
-    }
-
-    @Override
-    public LocatorResult locate(LocatorSession session) throws Exception {
-        Objects.requireNonNull(session, "session is null");
-
-        Rectangle bounds = region.toScreenRect(session.getClientRectWin32());
-        Point center = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-
-        String gotNorm = session.readTextNormalized(region);
-        boolean ok = gotNorm != null && gotNorm.contains(expectedContainsNorm);
-
-        Map<String, String> diag = new LinkedHashMap<>();
-        diag.put("expectedContains", expectedContainsNorm);
-        diag.put("ocr", gotNorm == null ? "" : gotNorm);
-
-        if (ok) {
-            return LocatorResult.found(kind(), label, center, bounds, 1.0, diag);
-        }
-        return LocatorResult.notFound(kind(), label, diag);
-    }
-
-    private static String normalize(String s) {
-        return s.toLowerCase().replaceAll("\\s+", " ").trim();
-    }
 }

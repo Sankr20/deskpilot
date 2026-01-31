@@ -47,21 +47,23 @@ public static void run(
 
         s.step(stepName, () -> {
 
-            Instant deadline = Instant.now().plus(opt.timeout());
-            int attempts = 0;
+           Instant start = Instant.now();
+Instant deadline = start.plus(opt.timeout());
+int attempts = 0;
+int errorCount = 0;
 
-            LocatorResult last = null;
-            Exception lastErr = null;
-            String lastExpectationFailure = null;
+LocatorResult last = null;
+Exception lastErr = null;
+String lastExpectationFailure = null;
+
 
             while (Instant.now().isBefore(deadline)) {
                 attempts++;
 
                 try {
-                    // ✅ refresh visual state
-                 // ✅ stabilize + capture (minimal default)
+// Stabilize per locate attempt (lightweight). No default heavy stabilize here.
 if (stabilize != null) stabilize.stabilize(s);
-else s.stabilize();
+
 
 
 
@@ -82,13 +84,28 @@ else s.stabilize();
 
                     sleep(opt.pollInterval());
                 } catch (Exception e) {
-                    lastErr = e;
-                    sleep(opt.pollInterval());
-                }
+    lastErr = e;
+    errorCount++;
+    sleep(opt.pollInterval());
+}
+
             }
+long elapsedMs = java.time.Duration.between(start, Instant.now()).toMillis();
+String msg = buildFailureMessage(
+        stepName,
+        locator,
+        expectations,
+        opt,
+        attempts,
+        errorCount,
+        elapsedMs,
+        last,
+        lastExpectationFailure,
+        lastErr
+);
 
-           String msg = buildFailureMessage(stepName, locator, expectations, attempts, last, lastExpectationFailure, lastErr);
 
+           
            try {
     // always persist the final diagnostic message
     s.saveStepText("failure.txt", msg);
@@ -127,15 +144,19 @@ public static void run(
         try { Thread.sleep(ms); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
     }
 
- private static String buildFailureMessage(
+private static String buildFailureMessage(
         String stepName,
         Locator locator,
         ActionExpectation[] exps,
+        ActionOptions opt,
         int attempts,
+        int errorCount,
+        long elapsedMs,
         LocatorResult last,
         String expFail,
         Exception lastErr
 )
+
  {
         String label = locator == null ? "<null>" : locator.label();
 
@@ -145,6 +166,11 @@ public static void run(
           .append("kind=").append(locator.kind()).append("\n")
          .append("expectations=").append(java.util.Arrays.toString(exps)).append("\n")
           .append("attempts=").append(attempts).append("\n");
+          sb.append("timeout=").append(opt == null ? "<null>" : opt.timeout()).append("\n")
+  .append("pollInterval=").append(opt == null ? "<null>" : opt.pollInterval()).append("\n")
+  .append("elapsedMs=").append(elapsedMs).append("\n")
+  .append("errorCount=").append(errorCount).append("\n");
+
 
         if (expFail != null) sb.append("reason=").append(expFail).append("\n");
 
