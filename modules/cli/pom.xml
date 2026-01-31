@@ -17,40 +17,46 @@
   <packaging>jar</packaging>
 
   <dependencies>
+    <!-- runtime -->
     <dependency>
       <groupId>io.deskpilot</groupId>
       <artifactId>engine</artifactId>
       <version>${project.version}</version>
     </dependency>
 
-  <dependency>
-    <groupId>io.deskpilot</groupId>
-    <artifactId>recorder</artifactId>
-    <version>${project.version}</version>
-  </dependency>
+    <dependency>
+      <groupId>io.deskpilot</groupId>
+      <artifactId>recorder</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
+    <!-- ✅ REQUIRED at COMPILE scope because Main.java uses Launcher APIs in src/main/java -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
+      <version>1.10.3</version>
+    </dependency>
 
-   <dependency>
-  <groupId>org.junit.platform</groupId>
-  <artifactId>junit-platform-launcher</artifactId>
-  <version>1.10.3</version>
-</dependency>
+    <!-- ✅ REQUIRED at COMPILE scope because SmokeCommand references io.deskpilot.demo.* in src/main/java -->
+    <dependency>
+      <groupId>io.deskpilot</groupId>
+      <artifactId>demo-app</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
-<!-- Test dependencies -->
-<dependency>
-  <groupId>io.deskpilot</groupId>
-  <artifactId>testkit</artifactId>
-  <version>${project.version}</version>
-  <scope>test</scope>
-</dependency>
+    <!-- tests -->
+    <dependency>
+      <groupId>io.deskpilot</groupId>
+      <artifactId>testkit</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
 
-<dependency>
-  <groupId>org.junit.jupiter</groupId>
-  <artifactId>junit-jupiter</artifactId>
-  <scope>test</scope>
-</dependency>
-
-
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -71,7 +77,7 @@
               <finalName>deskpilot</finalName>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>io.deskpilot.cli.Main</mainClass>
+                  <mainClass>io.deskpilot.cli.CliEntrypoint</mainClass>
                 </transformer>
               </transformers>
             </configuration>
@@ -79,29 +85,37 @@
         </executions>
       </plugin>
 
+      <!-- ✅ one exec plugin only -->
       <plugin>
-  <groupId>org.apache.maven.plugins</groupId>
-  <artifactId>maven-assembly-plugin</artifactId>
-  <version>3.7.1</version>
-  <executions>
-    <execution>
-      <id>make-dist-zip</id>
-      <phase>package</phase>
-      <goals>
-        <goal>single</goal>
-      </goals>
-      <configuration>
-        <finalName>deskpilot-dist</finalName>
-        <appendAssemblyId>false</appendAssemblyId>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.3</version>
+        <configuration>
+          <mainClass>io.deskpilot.cli.CliEntrypoint</mainClass>
+        </configuration>
+      </plugin>
 
-        <descriptors>
-          <descriptor>${project.basedir}/src/assembly/dist.xml</descriptor>
-        </descriptors>
-      </configuration>
-    </execution>
-  </executions>
-</plugin>
-
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.7.1</version>
+        <executions>
+          <execution>
+            <id>make-dist-zip</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+            <configuration>
+              <finalName>deskpilot-dist</finalName>
+              <appendAssemblyId>false</appendAssemblyId>
+              <descriptors>
+                <descriptor>${project.basedir}/src/assembly/dist.xml</descriptor>
+              </descriptors>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 
