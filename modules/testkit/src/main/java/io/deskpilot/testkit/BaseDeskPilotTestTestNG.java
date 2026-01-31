@@ -41,10 +41,24 @@ public abstract class BaseDeskPilotTestTestNG {
                 .runsDir(runsDir())
                 .runName(runName)
                 .build();
+java.nio.file.Path runFolder = RunOptions.prepareRunFolder(opts);
 
-        this.session = DeskPilot.attachPickWindow(opts);
-        this.actions = new Actions(session);
-    }
+try {
+    this.session = DeskPilot.attachPickWindow(opts);
+    this.actions = new Actions(session);
+} catch (Exception e) {
+    // Write attach failure diagnostics into startup folder
+    java.nio.file.Path startup = runFolder.resolve("01-startup");
+    try {
+        java.nio.file.Files.writeString(
+                startup.resolve("attach_error.txt"),
+                String.valueOf(e),
+                java.nio.charset.StandardCharsets.UTF_8
+        );
+    } catch (Exception ignored) {}
+    throw e;
+}}
+
 
     @AfterMethod(alwaysRun = true)
     final void deskpilot_afterMethod() {
