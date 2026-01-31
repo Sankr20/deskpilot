@@ -34,7 +34,7 @@
     <dependency>
       <groupId>org.junit.platform</groupId>
       <artifactId>junit-platform-launcher</artifactId>
-      <version>1.10.3</version>
+      <version>6.0.2</version>
     </dependency>
 
     <!-- ✅ REQUIRED at COMPILE scope because SmokeCommand references io.deskpilot.demo.* in src/main/java -->
