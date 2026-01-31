@@ -32,6 +32,20 @@ deskpilot record
 deskpilot run io.deskpilot.tests.generated.<YourTestClass>
 ```
 
+## Security & Privacy
+
+DeskPilot produces diagnostic artifacts (screenshots, OCR dumps, overlays, logs). These artifacts **may contain sensitive information**
+(e.g., customer data, credentials, financial information, private communications).
+
+**Recommendations:**
+- Treat `runs/` and diagnostic outputs as **confidential**.
+- Do not run against production accounts or production data.
+- Do not upload `runs/` folders to public CI artifacts.
+- Keep generated projects’ `.gitignore` rules for `runs/` and images enabled.
+
+DeskPilot is designed to be diagnostics-first. We will keep rich failure bundles, but aim to be safe-by-default.
+
+
 ## Build from source
 
 Requirements: **Windows**, **Java 17+**, **Maven 3.9+**.
