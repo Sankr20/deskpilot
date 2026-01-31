@@ -1,7 +1,6 @@
 package io.deskpilot.engine;
 
 import io.deskpilot.engine.actions.ActionExpectation;
-import io.deskpilot.engine.locators.LocateStatus;
 import io.deskpilot.engine.locators.LocatorKind;
 import io.deskpilot.engine.locators.LocatorResult;
 import io.deskpilot.engine.runtime.ActionAssertions;
