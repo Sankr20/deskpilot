@@ -2,18 +2,19 @@ name: Security
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
     - cron: "0 3 * * 0" # weekly Sunday 03:00 UTC
   workflow_dispatch:
 
+# Default: least privilege
 permissions:
   contents: read
 
 concurrency:
-  group: security-${{ github.ref }}
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,24 +35,32 @@ jobs:
     permissions:
       contents: read
       security-events: write
+
     strategy:
       fail-fast: false
       matrix:
-        language: [ "java" ]
+        language: ["java"]
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: github/codeql-action/init@v3
+      - name: Set up Java
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
 
-      # For Maven/Java repos: CodeQL can autobuild; if it fails, switch to explicit mvn
-      - uses: github/codeql-action/autobuild@v3
+      # Deterministic build for multi-module Maven repos
+      - name: Build (skip tests)
+        run: mvn -q -DskipTests package
 
-      # If autobuild ever fails, replace autobuild step with:
-      # - name: Build
-      #   run: mvn -q -DskipTests package
-
-      - uses: github/codeql-action/analyze@v3
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
