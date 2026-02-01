@@ -17,6 +17,14 @@
     <log4j.version>2.24.3</log4j.version>
   </properties>
 
+  <scm>
+  <connection>scm:git:https://github.com/Sankr20/deskpilot.git</connection>
+  <developerConnection>scm:git:ssh://git@github.com/Sankr20/deskpilot.git</developerConnection>
+  <url>https://github.com/Sankr20/deskpilot</url>
+  <tag>HEAD</tag>
+</scm>
+
+
   <modules>
     <module>modules/testkit</module>
     <module>modules/engine</module>
@@ -84,6 +92,29 @@
             </excludes>
           </configuration>
         </plugin>
+
+        <!-- ✅ SAFE buildnumber defaults (won’t fail if SCM is missing) -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>buildnumber-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <configuration>
+          <doCheck>false</doCheck>
+          <doUpdate>false</doUpdate>
+
+          <!-- KEY: don’t fail build if SCM can’t be read -->
+          <failOnError>false</failOnError>
+
+          <!-- fallback value if SCM is unavailable -->
+          <revisionOnScmFailure>dev</revisionOnScmFailure>
+
+          <!-- makes it use git when available -->
+          <providerImplementations>
+            <git>jgit</git>
+          </providerImplementations>
+        </configuration>
+      </plugin>
+      
       </plugins>
     </pluginManagement>
   </build>

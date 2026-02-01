@@ -17,7 +17,7 @@
   <packaging>jar</packaging>
 
   <dependencies>
-    <!-- runtime -->
+    <!-- Runtime -->
     <dependency>
       <groupId>io.deskpilot</groupId>
       <artifactId>engine</artifactId>
@@ -30,21 +30,21 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- ✅ REQUIRED at COMPILE scope because Main.java uses Launcher APIs in src/main/java -->
+    <!-- Main.java uses JUnit Platform Launcher APIs at runtime -->
     <dependency>
       <groupId>org.junit.platform</groupId>
       <artifactId>junit-platform-launcher</artifactId>
       <version>1.10.3</version>
     </dependency>
 
-    <!-- ✅ REQUIRED at COMPILE scope because SmokeCommand references io.deskpilot.demo.* in src/main/java -->
+    <!-- SmokeCommand references demo-app in src/main/java -->
     <dependency>
       <groupId>io.deskpilot</groupId>
       <artifactId>demo-app</artifactId>
       <version>${project.version}</version>
     </dependency>
 
-    <!-- tests -->
+    <!-- Tests -->
     <dependency>
       <groupId>io.deskpilot</groupId>
       <artifactId>testkit</artifactId>
@@ -61,12 +61,15 @@
 
   <build>
     <plugins>
+
+      <!-- Build a single runnable fat jar: target/deskpilot.jar -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.1</version>
         <executions>
           <execution>
+            <id>shade-cli</id>
             <phase>package</phase>
             <goals>
               <goal>shade</goal>
@@ -78,6 +81,10 @@
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>io.deskpilot.cli.CliEntrypoint</mainClass>
+                  <manifestEntries>
+                    <Implementation-Title>deskpilot</Implementation-Title>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
                 </transformer>
               </transformers>
             </configuration>
@@ -85,7 +92,7 @@
         </executions>
       </plugin>
 
-      <!-- ✅ one exec plugin only -->
+      <!-- Convenience: mvn -pl modules/cli exec:java -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
@@ -95,28 +102,122 @@
         </configuration>
       </plugin>
 
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-assembly-plugin</artifactId>
-        <version>3.7.1</version>
-        <executions>
-          <execution>
-            <id>make-dist-zip</id>
-            <phase>package</phase>
-            <goals>
-              <goal>single</goal>
-            </goals>
-            <configuration>
-              <finalName>deskpilot-dist</finalName>
-              <appendAssemblyId>false</appendAssemblyId>
-              <descriptors>
-                <descriptor>${project.basedir}/src/assembly/dist.xml</descriptor>
-              </descriptors>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
     </plugins>
   </build>
+
+  <!-- Dist zip is opt-in: only runs with -Pdist -->
+  <profiles>
+    <profile>
+      <id>dist</id>
+
+      <build>
+        <plugins>
+
+          <!-- Optional: populate buildNumber if available; must NOT fail build -->
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>buildnumber-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>buildnumber</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>create</goal>
+                </goals>
+                <configuration>
+                  <doCheck>false</doCheck>
+                  <doUpdate>false</doUpdate>
+                  <failOnError>false</failOnError>
+                  <revisionOnScmFailure>dev</revisionOnScmFailure>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+          <!-- Stage files into target/dist/deskpilot -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+
+              <!-- Copy cmd + README from modules/cli/src/dist -->
+              <execution>
+                <id>stage-launcher-and-readme</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/dist/deskpilot</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${project.basedir}/src/dist</directory>
+                      <includes>
+                        <include>deskpilot.cmd</include>
+                        <include>README.md</include>
+                      </includes>
+                      <filtering>false</filtering>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+
+              <!-- Copy shaded jar into staging -->
+              <execution>
+                <id>stage-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/dist/deskpilot</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${project.build.directory}</directory>
+                      <includes>
+                        <include>deskpilot.jar</include>
+                      </includes>
+                      <filtering>false</filtering>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+
+            </executions>
+          </plugin>
+
+          <!-- Zip it (verify runs after package, so staging is guaranteed complete) -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>zip-dist</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.build.directory}/dist"/>
+                    <delete file="${project.build.directory}/deskpilot-dist.zip" failonerror="false"/>
+
+                    <zip destfile="${project.build.directory}/deskpilot-dist.zip">
+                      <fileset dir="${project.build.directory}/dist"/>
+                    </zip>
+
+                    <echo>Created: ${project.build.directory}/deskpilot-dist.zip</echo>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

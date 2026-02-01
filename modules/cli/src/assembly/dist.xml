@@ -3,6 +3,7 @@
           xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3 https://maven.apache.org/xsd/assembly-1.1.3.xsd">
 
   <id>dist</id>
+
   <formats>
     <format>zip</format>
   </formats>
@@ -10,27 +11,27 @@
   <!-- Zip content root folder -->
   <baseDirectory>deskpilot</baseDirectory>
 
+  <!-- 1) Include shaded jar -->
   <files>
-    <!-- The shaded jar produced by cli module (you set finalName=deskpilot) -->
     <file>
       <source>${project.build.directory}/deskpilot.jar</source>
       <outputDirectory>/</outputDirectory>
       <destName>deskpilot.jar</destName>
     </file>
-
-    <!-- Copy launcher + README from repo root dist folder -->
-    <file>
-      <source>${project.basedir}/../../dist/deskpilot.cmd</source>
-      <outputDirectory>/</outputDirectory>
-      <destName>deskpilot.cmd</destName>
-      <fileMode>0755</fileMode>
-    </file>
-
-    <file>
-      <source>${project.basedir}/../../dist/README.md</source>
-      <outputDirectory>/</outputDirectory>
-      <destName>README.md</destName>
-    </file>
   </files>
+
+  <!-- 2) Copy repo-root dist/* into zip root -->
+  <fileSets>
+    <fileSet>
+      <directory>${maven.multiModuleProjectDirectory}/dist</directory>
+      <outputDirectory>/</outputDirectory>
+      <includes>
+        <include>deskpilot.cmd</include>
+        <include>README.md</include>
+      </includes>
+      <!-- keep it simple on Windows; no fileMode -->
+      <filtered>false</filtered>
+    </fileSet>
+  </fileSets>
 
 </assembly>

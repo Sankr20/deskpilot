@@ -9,7 +9,9 @@ import org.junit.platform.launcher.core.LauncherFactory;
 import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 import org.junit.platform.launcher.listeners.TestExecutionSummary;
 
+import java.io.PrintWriter;
 import java.util.Arrays;
+import java.util.Locale;
 
 public final class Main {
 
@@ -17,28 +19,55 @@ public final class Main {
         int code = run(args);
 
         // IMPORTANT: no System.exit here (so mvn exec:java won't complain)
-        if (code != 0) throw new RuntimeException("deskpilot exited with code " + code);
+        if (code != 0) {
+            throw new RuntimeException("deskpilot exited with code " + code);
+        }
     }
 
     static int run(String[] args) throws Exception {
-        if (args.length == 0) {
-            usage();
-            return 2;
+        if (args == null) args = new String[0];
+
+        // ---------- global flags ----------
+        if (args.length == 0 || isHelp(args[0])) {
+            printGlobalHelp();
+            return 0;
         }
 
-        return switch (args[0].toLowerCase()) {
-            case "doctor" -> { doctor(); yield 0; }
-            case "init" -> { new InitCommand().run(slice(args)); yield 0; }
-            case "record" -> { RecorderCLI.recordToFile(slice(args)); yield 0; }
-            case "run" -> runTest(args);
-            case "smoke" -> smoke(args);
+        if (args.length == 1 && isVersion(args[0])) {
+            printVersion();
+            return 0;
+        }
+
+        String cmd = lower(args[0]);
+
+        return switch (cmd) {
+            case "doctor" -> {
+                doctor();
+                yield 0;
+            }
+
+            case "init" -> {
+                new InitCommand().run(slice(args));
+                yield 0;
+            }
+
+            case "record" -> RecorderCLI.recordToFile(slice(args));
+
+            case "run" -> runTest(slice(args));
+
+            case "smoke" -> smoke(slice(args));
+
             default -> {
                 System.err.println("Unknown command: " + args[0]);
-                usage();
+                System.err.println("Run: deskpilot --help");
+                System.err.println();
+                printGlobalHelp();
                 yield 2;
             }
         };
     }
+
+    // ---------- commands ----------
 
     private static void doctor() {
         System.out.println("DeskPilot doctor");
@@ -48,14 +77,21 @@ public final class Main {
     }
 
     private static int runTest(String[] args) {
-        if (args.length < 2) {
-            System.err.println("Usage: deskpilot run <fully.qualified.TestClass>");
+        if (args.length == 0 || isHelp(args[0])) {
+            printRunHelp();
+            return 0;
+        }
+
+        String testClass = args[0].trim();
+        if (testClass.isEmpty()) {
+            System.err.println("[ERROR] Missing test class.");
+            printRunHelp();
             return 2;
         }
 
         LauncherDiscoveryRequest request =
                 LauncherDiscoveryRequestBuilder.request()
-                        .selectors(DiscoverySelectors.selectClass(args[1]))
+                        .selectors(DiscoverySelectors.selectClass(testClass))
                         .build();
 
         Launcher launcher = LauncherFactory.create();
@@ -65,33 +101,37 @@ public final class Main {
         launcher.execute(request);
 
         TestExecutionSummary summary = listener.getSummary();
-        summary.printTo(new java.io.PrintWriter(System.out));
+        summary.printTo(new PrintWriter(System.out));
 
         return summary.getFailures().isEmpty() ? 0 : 1;
     }
 
     private static int smoke(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.err.println("Usage:\n    deskpilot smoke demo");
-            return 2;
+        if (args.length == 0 || isHelp(args[0])) {
+            printSmokeHelp();
+            return 0;
         }
 
-        String target = args[1].toLowerCase();
+        String target = lower(args[0]);
+
         try {
-            switch (target) {
+            return switch (target) {
                 case "demo" -> {
                     System.err.println("[DEBUG] DemoCompositeActionsSmoke loaded from: " +
-                            DemoCompositeActionsSmoke.class.getProtectionDomain()
-                                    .getCodeSource().getLocation());
+                            DemoCompositeActionsSmoke.class
+                                    .getProtectionDomain()
+                                    .getCodeSource()
+                                    .getLocation());
                     DemoCompositeActionsSmoke.main(new String[0]);
+                    yield 0;
                 }
                 default -> {
-                    System.err.println("Unknown smoke target: " + args[1]);
-                    System.err.println("Available:\n    deskpilot smoke demo");
-                    return 2;
+                    System.err.println("Unknown smoke target: " + args[0]);
+                    System.err.println();
+                    printSmokeHelp();
+                    yield 2;
                 }
-            }
-            return 0;
+            };
         } catch (Throwable t) {
             System.err.println("❌ SMOKE FAILED: " + t.getMessage());
             t.printStackTrace(System.err);
@@ -99,19 +139,70 @@ public final class Main {
         }
     }
 
-    private static void usage() {
-        System.out.println(
-                "DeskPilot CLI\n" +
-                "    deskpilot doctor\n" +
-                "    deskpilot record\n" +
-                "    deskpilot run <TestClass>\n" +
-                "    deskpilot init <dir> <junit5|testng>\n" +
-                "    deskpilot smoke demo"
-        );
+    // ---------- help / version ----------
+
+    private static void printGlobalHelp() {
+        System.out.println("DeskPilot CLI");
+        System.out.println();
+        System.out.println("Usage:");
+        System.out.println("  deskpilot --help");
+        System.out.println("  deskpilot --version");
+        System.out.println("  deskpilot doctor");
+        System.out.println("  deskpilot init <dir> <junit5|testng>");
+        System.out.println("  deskpilot record [--framework junit5|testng] [--projectDir <dir>] [--force] [<outputFile>]");
+        System.out.println("  deskpilot run <fully.qualified.TestClass>");
+        System.out.println("  deskpilot smoke demo");
+        System.out.println();
+    }
+
+    private static void printRunHelp() {
+        System.out.println("Run tests");
+        System.out.println();
+        System.out.println("Usage:");
+        System.out.println("  deskpilot run <fully.qualified.TestClass>");
+        System.out.println();
+    }
+
+    private static void printSmokeHelp() {
+        System.out.println("Smoke tests");
+        System.out.println();
+        System.out.println("Usage:");
+        System.out.println("  deskpilot smoke demo");
+        System.out.println();
+    }
+
+    private static void printVersion() {
+        String v = Main.class.getPackage().getImplementationVersion();
+        if (v == null || v.isBlank()) v = "dev";
+        System.out.println("deskpilot " + v);
+    }
+
+    // ---------- utils ----------
+
+    static boolean isHelp(String s) {
+        if (s == null) return false;
+        String a = s.trim().toLowerCase(Locale.ROOT);
+        return a.equals("help")
+                || a.equals("--help")
+                || a.equals("-h")
+                || a.equals("/?")
+                || a.equals("-help");
+    }
+
+    private static boolean isVersion(String s) {
+        if (s == null) return false;
+        String a = s.trim().toLowerCase(Locale.ROOT);
+        return a.equals("--version") || a.equals("-v");
+    }
+
+    private static String lower(String s) {
+        return (s == null) ? "" : s.trim().toLowerCase(Locale.ROOT);
     }
 
     private static String[] slice(String[] args) {
-        return args.length <= 1 ? new String[0] : Arrays.copyOfRange(args, 1, args.length);
+        return args.length <= 1
+                ? new String[0]
+                : Arrays.copyOfRange(args, 1, args.length);
     }
 
     private Main() {}

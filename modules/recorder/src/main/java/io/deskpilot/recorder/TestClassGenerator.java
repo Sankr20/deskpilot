@@ -2,8 +2,9 @@ package io.deskpilot.recorder;
 
 import io.deskpilot.engine.NormalizedRegion;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -15,12 +16,25 @@ public final class TestClassGenerator {
 
     // ---------------- JUnit 5 (project output; uses testkit) ----------------
 
-    public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output)
-            throws Exception {
-                requireNonEmpty(actions);
+    public static void generateJUnit5(
+            String pkg,
+            String className,
+            List<RecordedAction> actions,
+            Path output
+    ) throws Exception {
+        generateJUnit5(pkg, className, actions, output, false);
+    }
+
+    public static void generateJUnit5(
+            String pkg,
+            String className,
+            List<RecordedAction> actions,
+            Path output,
+            boolean force
+    ) throws Exception {
+        requireNonEmpty(actions);
         String src = buildJUnit5Source(pkg, className, actions);
-        Files.createDirectories(output.getParent());
-        Files.writeString(output, src);
+        writeFile(output, src, force);
     }
 
     public static Path generateJUnit5ToProjectDir(
@@ -28,6 +42,94 @@ public final class TestClassGenerator {
             String classNameOrBlank,
             List<RecordedAction> actions,
             Path projectDir
+    ) throws Exception {
+        return generateJUnit5ToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
+    }
+
+    public static Path generateJUnit5ToProjectDir(
+            String pkg,
+            String classNameOrBlank,
+            List<RecordedAction> actions,
+            Path projectDir,
+            boolean force
+    ) throws Exception {
+        String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
+                ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
+                : classNameOrBlank;
+
+        Path outFile = projectDir
+                .resolve("src/test/java")
+                .resolve(pkg.replace('.', '/'))
+                .resolve(className + ".java");
+
+        generateJUnit5(pkg, className, actions, outFile, force);
+        return outFile;
+    }
+
+    /**
+     * Repo convenience: write into modules/engine generated folder.
+     * IMPORTANT: engine module must not depend on testkit, so this is standalone JUnit.
+     */
+    public static Path generateIntoRepoEngineGenerated(List<RecordedAction> actions) throws Exception {
+        return generateIntoRepoEngineGenerated(actions, false);
+    }
+
+    public static Path generateIntoRepoEngineGenerated(List<RecordedAction> actions, boolean force) throws Exception {
+        requireNonEmpty(actions);
+
+        String pkg = "io.deskpilot.tests.generated";
+        String className = "RecordedTest_" + TS.format(LocalDateTime.now()) + "Test";
+
+        Path outFile = Path.of("modules", "engine")
+                .resolve("src/test/java")
+                .resolve(pkg.replace('.', '/'))
+                .resolve(className + ".java");
+
+        // ALWAYS standalone for repo engine output (NO testkit)
+        String src = buildEngineStandaloneJUnitSource(pkg, className, actions);
+
+        writeFile(outFile, src, force);
+        return outFile;
+    }
+
+    // ---------------- TestNG (project output; uses testkit) ----------------
+
+    public static void generateTestNG(
+            String pkg,
+            String className,
+            List<RecordedAction> actions,
+            Path output
+    ) throws Exception {
+        generateTestNG(pkg, className, actions, output, false);
+    }
+
+    public static void generateTestNG(
+            String pkg,
+            String className,
+            List<RecordedAction> actions,
+            Path output,
+            boolean force
+    ) throws Exception {
+        requireNonEmpty(actions);
+        String src = buildTestNGSource(pkg, className, actions);
+        writeFile(output, src, force);
+    }
+
+    public static Path generateTestNGToProjectDir(
+            String pkg,
+            String classNameOrBlank,
+            List<RecordedAction> actions,
+            Path projectDir
+    ) throws Exception {
+        return generateTestNGToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
+    }
+
+    public static Path generateTestNGToProjectDir(
+            String pkg,
+            String classNameOrBlank,
+            List<RecordedAction> actions,
+            Path projectDir,
+            boolean force
     ) throws Exception {
 
         String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
@@ -39,62 +141,9 @@ public final class TestClassGenerator {
                 .resolve(pkg.replace('.', '/'))
                 .resolve(className + ".java");
 
-        generateJUnit5(pkg, className, actions, outFile);
+        generateTestNG(pkg, className, actions, outFile, force);
         return outFile;
     }
-
-    /**
-     * Repo convenience: write into modules/engine generated folder.
-     * IMPORTANT: engine module must not depend on testkit, so this is standalone JUnit.
-     */
-    public static Path generateIntoRepoEngineGenerated(List<RecordedAction> actions) throws Exception {
-    requireNonEmpty(actions);
-        String pkg = "io.deskpilot.tests.generated";
-    String className = "RecordedTest_" + TS.format(LocalDateTime.now()) + "Test";
-
-    Path outFile = Path.of("modules", "engine")
-            .resolve("src/test/java")
-            .resolve(pkg.replace('.', '/'))
-            .resolve(className + ".java");
-
-    // ✅ ALWAYS standalone for repo engine output (NO testkit)
-    String src = buildEngineStandaloneJUnitSource(pkg, className, actions);
-
-    Files.createDirectories(outFile.getParent());
-    Files.writeString(outFile, src);
-    return outFile;
-}
-
-
-   // ---------------- TestNG (project output; uses testkit) ----------------
-
-public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output)
-        throws Exception {
-            requireNonEmpty(actions);
-    String src = buildTestNGSource(pkg, className, actions);
-    Files.createDirectories(output.getParent());
-    Files.writeString(output, src);
-}
-
-public static Path generateTestNGToProjectDir(
-        String pkg,
-        String classNameOrBlank,
-        List<RecordedAction> actions,
-        Path projectDir
-) throws Exception {
-
-    String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
-            ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
-            : classNameOrBlank;
-
-    Path outFile = projectDir
-            .resolve("src/test/java")
-            .resolve(pkg.replace('.', '/'))
-            .resolve(className + ".java");
-
-    generateTestNG(pkg, className, actions, outFile);
-    return outFile;
-}
 
     // ---------------- Source builders ----------------
 
@@ -220,10 +269,6 @@ public static Path generateTestNGToProjectDir(
         return sb.toString();
     }
 
-    /**
-     * Shared emitter for PROJECT output (testkit base tests).
-     * WaitText uses Locators.ocrContains(label, region, expectedContains) and timeout via actions().withTimeout(...)
-     */
     private static void emitActionsForProject(StringBuilder sb, List<RecordedAction> actions) {
         int stepIndex = 1;
         int fillIndex = 1;
@@ -309,11 +354,33 @@ public static Path generateTestNGToProjectDir(
     }
 
     private static void requireNonEmpty(List<RecordedAction> actions) {
-    if (actions == null || actions.isEmpty()) {
-        throw new IllegalArgumentException("Refusing to generate test: no actions were recorded.");
+        if (actions == null || actions.isEmpty()) {
+            throw new IllegalArgumentException("Refusing to generate test: no actions were recorded.");
+        }
     }
-}
 
+    private static void writeFile(Path file, String content, boolean force) throws IOException {
+        Files.createDirectories(file.toAbsolutePath().normalize().getParent());
+
+        if (force) {
+            Files.writeString(
+                    file,
+                    content,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+            );
+        } else {
+            Files.writeString(
+                    file,
+                    content,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE
+            );
+        }
+    }
 
     private TestClassGenerator() {}
 }

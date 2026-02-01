@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -29,40 +30,54 @@ public final class RecordedTestWriter {
     private RecordedTestWriter() {
     }
 
-    public static Path writeTest(
-            String className,
-            String testMethodName,
-            String pickWindowLabel,
-            List<RecordedStep> steps) throws IOException {
+   public static Path writeTest(
+        String className,
+        String testMethodName,
+        String pickWindowLabel,
+        List<RecordedStep> steps) throws IOException {
 
-        if (className == null || className.isBlank())
-            throw new IllegalArgumentException("className is blank");
-        if (testMethodName == null || testMethodName.isBlank())
-            throw new IllegalArgumentException("testMethodName is blank");
-        if (pickWindowLabel == null || pickWindowLabel.isBlank())
-            throw new IllegalArgumentException("pickWindowLabel is blank");
-
-        Objects.requireNonNull(steps, "steps is null");
-
-        boolean anyReal = steps.stream().anyMatch(s ->
-        s instanceof RecordedStep.Click
-     || s instanceof RecordedStep.Fill
-     || s instanceof RecordedStep.WaitForFound
-);
-
-if (!anyReal) {
-    throw new IllegalArgumentException("Refusing to write empty recording (no Click/Fill/Wait steps).");
+    // Backward-compatible default: do NOT overwrite.
+    return writeTest(className, testMethodName, pickWindowLabel, steps, false);
 }
 
-        Files.createDirectories(GENERATED_TEST_DIR);
+public static Path writeTest(
+        String className,
+        String testMethodName,
+        String pickWindowLabel,
+        List<RecordedStep> steps,
+        boolean force) throws IOException {
 
-        String src = render(className, testMethodName, pickWindowLabel, steps);
+    if (className == null || className.isBlank())
+        throw new IllegalArgumentException("className is blank");
+    if (testMethodName == null || testMethodName.isBlank())
+        throw new IllegalArgumentException("testMethodName is blank");
+    if (pickWindowLabel == null || pickWindowLabel.isBlank())
+        throw new IllegalArgumentException("pickWindowLabel is blank");
 
-        Path out = GENERATED_TEST_DIR.resolve(className + ".java");
-        Files.writeString(out, src, StandardCharsets.UTF_8);
+    Objects.requireNonNull(steps, "steps is null");
 
-        return out;
+    boolean anyReal = steps.stream().anyMatch(s ->
+            s instanceof RecordedStep.Click
+                    || s instanceof RecordedStep.Fill
+                    || s instanceof RecordedStep.WaitForFound
+    );
+
+    if (!anyReal) {
+        throw new IllegalArgumentException("Refusing to write empty recording (no Click/Fill/Wait steps).");
     }
+
+    // Use absolute+normalized path to avoid surprises while still writing to the same location.
+    Path genDir = GENERATED_TEST_DIR.toAbsolutePath().normalize();
+    Files.createDirectories(genDir);
+
+    String src = render(className, testMethodName, pickWindowLabel, steps);
+
+    Path out = genDir.resolve(className + ".java").toAbsolutePath().normalize();
+
+    writeFile(out, src, force);
+
+    return out;
+}
 
     public static String defaultClassName() {
         // ✅ ends with Test so surefire runs it by default patterns
@@ -217,5 +232,21 @@ if (!anyReal) {
         return "            a.withTimeout(Duration.ofMillis(" + w.timeoutMs() + "L))" +
                 ".waitFor(Locators." + w.ocrLocatorConst() + ");\n";
     }
+
+    private static void writeFile(Path out, String src, boolean force) throws IOException {
+    Files.createDirectories(out.getParent());
+
+    if (force) {
+        Files.writeString(out, src, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE);
+    } else {
+        Files.writeString(out, src, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE);
+    }
+}
+
 
 }

@@ -15,32 +15,37 @@ public final class RecorderCLI {
         JUNIT5, TESTNG
     }
 
-    /**
-     * Usage:
-     * deskpilot record
-     * deskpilot record <outputFile>
-     * deskpilot record --framework testng <outputFile>
-     * deskpilot record --framework testng --projectDir
-     * <dir>
-     * deskpilot record --projectDir
-     * <dir>
-     */
     public static int recordToFile(String[] args) {
         Framework framework = Framework.JUNIT5;
+        boolean force = false;
+
         Path explicitOutFile = null;
         Path projectDir = null;
 
-        if (args == null)
-            args = new String[0];
+        if (args == null) args = new String[0];
+
+        // Quick help
+        if (args.length >= 1 && Main.isHelp(args[0])) {
+            printUsage();
+            return 0;
+        }
 
         // ---------------- Parse args ----------------
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
-            if (a == null)
-                continue;
+            if (a == null) continue;
             a = a.trim();
-            if (a.isEmpty())
+            if (a.isEmpty()) continue;
+
+            if (Main.isHelp(a)) {
+                printUsage();
+                return 0;
+            }
+
+            if ("--force".equalsIgnoreCase(a)) {
+                force = true;
                 continue;
+            }
 
             if ("--framework".equalsIgnoreCase(a)) {
                 if (i + 1 >= args.length) {
@@ -59,7 +64,7 @@ public final class RecorderCLI {
                 continue;
             }
 
-            if ("--projectdir".equalsIgnoreCase(a)) {
+            if ("--projectdir".equalsIgnoreCase(a) || "--projectDir".equals(a)) {
                 if (i + 1 >= args.length) {
                     System.err.println("Missing value after --projectDir");
                     return 2;
@@ -75,11 +80,11 @@ public final class RecorderCLI {
         }
 
         // ---------------- Safety defaults ----------------
-        // TestNG must not default into repo engine folder.
         if (framework == Framework.TESTNG && explicitOutFile == null && projectDir == null) {
             System.err.println("Usage:\n" +
                     "  deskpilot record --framework testng <outputFile>\n" +
-                    "  deskpilot record --framework testng --projectDir <dir>\n");
+                    "  deskpilot record --framework testng --projectDir <dir>\n" +
+                    "  (add --force to overwrite)\n");
             return 2;
         }
 
@@ -98,19 +103,12 @@ public final class RecorderCLI {
             while (true) {
                 System.out.print("> ");
                 String cmd = br.readLine();
-                if (cmd == null)
-                    break;
+                if (cmd == null) break;
 
                 cmd = cmd.trim();
-                if (cmd.isEmpty()) {
-                    // ENTER = stop recording (will later confirm write)
-                    break;
-                }
+                if (cmd.isEmpty()) break; // ENTER = stop
 
-                if (cmd.equalsIgnoreCase("S") || cmd.equalsIgnoreCase("STOP")) {
-                    // explicit stop
-                    break;
-                }
+                if (cmd.equalsIgnoreCase("S") || cmd.equalsIgnoreCase("STOP")) break;
 
                 if (cmd.equalsIgnoreCase("Q") || cmd.equalsIgnoreCase("QUIT")) {
                     System.out.println("Recording cancelled (quit). No test was written.");
@@ -143,8 +141,7 @@ public final class RecorderCLI {
 
                         System.out.print("Value: ");
                         String value = br.readLine();
-                        if (value == null)
-                            value = "";
+                        if (value == null) value = "";
 
                         recorder.recordFill(region, value);
                         System.out.println("Recorded: FILL " + region + " = " + value);
@@ -163,8 +160,7 @@ public final class RecorderCLI {
 
                         System.out.print("Expected text contains: ");
                         String expected = br.readLine();
-                        if (expected == null)
-                            expected = "";
+                        if (expected == null) expected = "";
                         expected = expected.trim();
 
                         if (expected.isEmpty()) {
@@ -188,17 +184,15 @@ public final class RecorderCLI {
             var actions = recorder.getActions();
             System.out.println("Actions recorded: " + recorder.summary());
 
-            // ---------------- Refuse empty recording ----------------
             if (actions.isEmpty()) {
                 System.out.println("Recording cancelled: no actions were recorded.");
-                return 2; // non-zero exit, intentional
+                return 2;
             }
+
             System.out.print("Write test? (Y/N) [Y]: ");
             String ans = br.readLine();
-            if (ans == null)
-                ans = "";
+            if (ans == null) ans = "";
             ans = ans.trim();
-
             if (!ans.isEmpty() && ans.equalsIgnoreCase("N")) {
                 System.out.println("Recording cancelled. No test was written.");
                 return 2;
@@ -207,36 +201,39 @@ public final class RecorderCLI {
             // ---------------- Write output ----------------
             Path written;
 
-            // Repo write detection: default (no args) is repo output
             boolean repoWrite = (explicitOutFile == null && projectDir == null)
                     || isDeskPilotRepoWrite(explicitOutFile, projectDir);
 
-            // In repo mode, NEVER generate testkit-based tests
             if (repoWrite) {
-                written = TestClassGenerator.generateIntoRepoEngineGenerated(actions);
+                // repo output writes into modules/engine; overwrite only with --force
+                written = TestClassGenerator.generateIntoRepoEngineGenerated(actions, force);
                 System.out.println("Recorded test written to " + written);
                 return 0;
             }
 
-            // Project mode outputs
             if (explicitOutFile != null) {
+                Path outFile = explicitOutFile.toAbsolutePath().normalize();
+                SafePaths.rejectReservedWindowsName(outFile.getFileName().toString());
+
                 if (framework == Framework.JUNIT5) {
-                    TestClassGenerator.generateJUnit5("com.example", "RecordedTest", actions, explicitOutFile);
+                    TestClassGenerator.generateJUnit5("com.example", "RecordedTest", actions, outFile, force);
                 } else {
-                    TestClassGenerator.generateTestNG("com.example", "RecordedTest", actions, explicitOutFile);
+                    TestClassGenerator.generateTestNG("com.example", "RecordedTest", actions, outFile, force);
                 }
-                written = explicitOutFile;
+                written = outFile;
 
             } else if (projectDir != null) {
+                Path root = SafePaths.root(projectDir);
+                SafePaths.ensureDir(root);
+
                 if (framework == Framework.JUNIT5) {
-                    written = TestClassGenerator.generateJUnit5ToProjectDir("com.example", "", actions, projectDir);
+                    written = TestClassGenerator.generateJUnit5ToProjectDir("com.example", "", actions, root, force);
                 } else {
-                    written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, projectDir);
+                    written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, root, force);
                 }
 
             } else {
-                // Should not happen because repoWrite covers this, but keep safe
-                written = TestClassGenerator.generateIntoRepoEngineGenerated(actions);
+                written = TestClassGenerator.generateIntoRepoEngineGenerated(actions, force);
             }
 
             System.out.println("Recorded test written to " + written);
@@ -247,6 +244,22 @@ public final class RecorderCLI {
             t.printStackTrace(System.err);
             return 1;
         }
+    }
+
+    private static void printUsage() {
+        System.out.println(
+                "Usage:\n" +
+                "  deskpilot record\n" +
+                "  deskpilot record --force\n" +
+                "  deskpilot record --framework testng <outputFile>\n" +
+                "  deskpilot record --framework testng --projectDir <dir>\n" +
+                "\n" +
+                "Options:\n" +
+                "  --framework junit5|testng\n" +
+                "  --projectDir <dir>\n" +
+                "  --force\n" +
+                "  --help\n"
+        );
     }
 
     private static void printHelp() {
@@ -260,20 +273,11 @@ public final class RecorderCLI {
         System.out.println("  S/STOP  = stop recording");
         System.out.println("  Q/QUIT  = quit without writing");
         System.out.println("  ENTER   = stop recording");
-
-        System.out.println();
-        System.out.println("Examples:");
-        System.out.println("  deskpilot record");
-        System.out.println("  deskpilot record --framework testng C:\\Temp\\RecordedTest.java");
-        System.out.println("  deskpilot record --framework testng --projectDir C:\\Work\\MyProj");
         System.out.println();
     }
 
-    // -------- Repo write detection --------
-
     private static boolean isInsideDeskPilotRepoEngine(Path p) {
-        if (p == null)
-            return false;
+        if (p == null) return false;
         String s = p.toString().replace("\\", "/").toLowerCase();
         return s.contains("/modules/engine/") || s.endsWith("/modules/engine");
     }
@@ -282,6 +286,5 @@ public final class RecorderCLI {
         return isInsideDeskPilotRepoEngine(explicitOutFile) || isInsideDeskPilotRepoEngine(projectDir);
     }
 
-    private RecorderCLI() {
-    }
+    private RecorderCLI() {}
 }
