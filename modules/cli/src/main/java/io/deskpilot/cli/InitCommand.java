@@ -1,41 +1,55 @@
 package io.deskpilot.cli;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public final class InitCommand {
 
     /**
-     * args = [dir, junit5|testng, optional package]
+     * Usage:
+     *   deskpilot init [--force] <dir> <junit5|testng> [package]
+     *
      * return 0 success, 2 usage
      */
     public int run(String[] args) throws Exception {
-        if (args.length < 2) {
+        if (args == null) args = new String[0];
+
+        boolean force = false;
+        int i = 0;
+        if (args.length > 0 && "--force".equalsIgnoreCase(args[0])) {
+            force = true;
+            i = 1;
+        }
+
+        if (args.length - i < 2) {
             System.err.println(
                     "Usage:\n" +
-                    "    deskpilot init <dir> <junit5|testng> [package]\n" +
+                    "    deskpilot init [--force] <dir> <junit5|testng> [package]\n" +
                     "Examples:\n" +
                     "    deskpilot init myproj junit5\n" +
-                    "    deskpilot init myproj testng com.myco.deskpilot"
+                    "    deskpilot init myproj testng com.myco.deskpilot\n" +
+                    "    deskpilot init --force myproj junit5\n"
             );
             return 2;
         }
 
-        Path dir = Paths.get(args[0]);
-        String framework = args[1].toLowerCase();
-
-        String packageName = (args.length >= 3 && !args[2].isBlank())
-                ? args[2]
+        String dirArg = args[i];
+        String framework = args[i + 1].trim().toLowerCase();
+        String packageName = (args.length - i >= 3 && !args[i + 2].isBlank())
+                ? args[i + 2].trim()
                 : "com.example.deskpilot";
-        String packagePath = packageName.replace('.', '/');
 
         if (!framework.equals("junit5") && !framework.equals("testng")) {
             System.err.println("Framework must be junit5 or testng");
             return 2;
         }
 
-        Files.createDirectories(dir);
+        SafePaths.validateJavaPackageOrThrow(packageName);
+        SafePaths.rejectReservedWindowsName(dirArg);
+
+        Path dir = SafePaths.root(Paths.get(dirArg));
+        SafePaths.ensureDirEmptyOrForce(dir, force);
+        SafePaths.ensureDir(dir);
 
         String groupId = "com.example";
         String artifactId = dir.getFileName().toString().replaceAll("[^a-zA-Z0-9_-]", "-");
@@ -46,6 +60,8 @@ public final class InitCommand {
         }
 
         String pom;
+        String packagePath = packageName.replace('.', '/');
+
         if (framework.equals("junit5")) {
             pom = String.format("""
                 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -166,9 +182,8 @@ public final class InitCommand {
                 """, groupId, artifactId, deskpilotVersion);
         }
 
-        Files.writeString(dir.resolve("pom.xml"), pom);
+        SafePaths.writeString(SafePaths.under(dir, "pom.xml"), pom, force);
 
-        // .gitignore
         String gitignore = """
             target/
             runs/
@@ -178,9 +193,8 @@ public final class InitCommand {
             .DS_Store
             Thumbs.db
             """;
-        Files.writeString(dir.resolve(".gitignore"), gitignore);
+        SafePaths.writeString(SafePaths.under(dir, ".gitignore"), gitignore, force);
 
-        // README.md
         String readme = """
             # DeskPilot Automation Project
 
@@ -197,10 +211,10 @@ public final class InitCommand {
             - Do not call low-level APIs directly (Robot/JNA/WindowManager).
             - Use DeskPilot's session API through the provided BaseTest.
             """;
-        Files.writeString(dir.resolve("README.md"), readme);
+        SafePaths.writeString(SafePaths.under(dir, "README.md"), readme, force);
 
-        Path testDir = dir.resolve("src/test/java").resolve(packagePath);
-        Files.createDirectories(testDir);
+        Path testDir = SafePaths.under(dir, "src", "test", "java", packagePath);
+        SafePaths.ensureDir(testDir);
 
         if (framework.equals("junit5")) {
             String test = String.format("""
@@ -220,7 +234,7 @@ public final class InitCommand {
                 }
                 """, packageName);
 
-            Files.writeString(testDir.resolve("ExampleDeskPilotTest.java"), test);
+            SafePaths.writeString(SafePaths.under(testDir, "ExampleDeskPilotTest.java"), test, force);
         } else {
             String test = String.format("""
                 package %s;
@@ -239,7 +253,7 @@ public final class InitCommand {
                 }
                 """, packageName);
 
-            Files.writeString(testDir.resolve("ExampleDeskPilotTest.java"), test);
+            SafePaths.writeString(SafePaths.under(testDir, "ExampleDeskPilotTest.java"), test, force);
         }
 
         return 0;

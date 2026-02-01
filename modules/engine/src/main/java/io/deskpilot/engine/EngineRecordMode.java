@@ -65,7 +65,7 @@ public class EngineRecordMode {
     public static void main(String[] args) throws Exception {
 
         // 13B: registry index + knobs
-        io.deskpilot.engine.recording.RegistryIndex index =
+      io.deskpilot.engine.recording.RegistryIndex index =
                 io.deskpilot.engine.recording.RegistryIndex.load(
                         io.deskpilot.engine.recording.RegistryIndex.EnginePaths.fromRepoLayout()
                 );
@@ -136,12 +136,15 @@ public class EngineRecordMode {
                     String className = RecordedTestWriter.defaultClassName();
                     String methodName = RecordedTestWriter.defaultMethodName();
 
-                    Path out = RecordedTestWriter.writeTest(
-                            className,
-                            methodName,
-                            "recorded-flow",
-                            recordedSteps
-                    );
+                    boolean forceWriteTest = allowOverwrite && (!requireOverwriteConfirm || overwriteConfirm);
+
+Path out = RecordedTestWriter.writeTest(
+        className,
+        methodName,
+        "recorded-flow",
+        recordedSteps,
+        forceWriteTest
+);
 
                     System.out.println("[OK] Generated test: " + out.toAbsolutePath());
                     System.out.println("Class: " + className);
