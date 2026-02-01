@@ -1,1 +1,57 @@
-name: Securityon:  pull_request:  push:    branches: [ "main" ]  schedule:    - cron: "0 6 * * 1" # weekly Monday 06:00 UTCpermissions:  contents: readjobs:  dependency-check:    name: OWASP Dependency-Check    runs-on: ubuntu-latest    steps:      - name: Checkout        uses: actions/checkout@v4      - name: Set up Java        uses: actions/setup-java@v4        with:          distribution: "temurin"          java-version: "21"          cache: "maven"      - name: Build (skip tests)        run: mvn -q -DskipTests package      # OWASP Dependency-Check via Maven plugin (no uploads; report stored in workspace)      - name: OWASP Dependency-Check        run: |          mvn -q org.owasp:dependency-check-maven:check \            -Dformat=HTML \            -DfailBuildOnCVSS=8 \            -DskipTests      - name: Upload Dependency-Check Report (PR only)        if: github.event_name == 'pull_request'        uses: actions/upload-artifact@v4        with:          name: dependency-check-report          path: |            **/target/dependency-check-report.html          if-no-files-found: ignore  sbom:    name: SBOM (CycloneDX)    runs-on: ubuntu-latest    steps:      - name: Checkout        uses: actions/checkout@v4      - name: Set up Java        uses: actions/setup-java@v4        with:          distribution: "temurin"          java-version: "21"          cache: "maven"      - name: Generate SBOM        run: |          mvn -q org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom \            -DskipTests \            -Dcyclonedx.outputFormat=json \            -Dcyclonedx.includeLicenseText=false      - name: Upload SBOM        uses: actions/upload-artifact@v4        with:          name: sbom-cyclonedx          path: |            **/target/bom.json          if-no-files-found: error
+name: Security
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 3 * * 0" # weekly Sunday 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency Review (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+
+  codeql:
+    name: CodeQL (Java)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ "java" ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      # For Maven/Java repos: CodeQL can autobuild; if it fails, switch to explicit mvn
+      - uses: github/codeql-action/autobuild@v3
+
+      # If autobuild ever fails, replace autobuild step with:
+      # - name: Build
+      #   run: mvn -q -DskipTests package
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
