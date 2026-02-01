@@ -31,7 +31,7 @@ public final class OcrConfig {
         if (p == null) throw new IllegalArgumentException("preset is null");
 
         return switch (p) {
-            case DEFAULT  -> new OcrConfig(p, true, 2.5, null);
+            case DEFAULT  -> new OcrConfig(p, true, 2.0, null);
             case TEXT_UI  -> new OcrConfig(p, true, 3.0, 165);
             case LIGHT_BG -> new OcrConfig(p, true, 2.5, 200);
         };

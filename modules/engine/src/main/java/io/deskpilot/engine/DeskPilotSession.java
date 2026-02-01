@@ -510,16 +510,37 @@ try {
     // OCR text IO (Region-based)
     // -------------------------
 
-    public String readText(NormalizedRegion region) throws Exception {
-        if (region == null)
-            throw new IllegalArgumentException("region is null");
+   public String readText(NormalizedRegion region) throws Exception {
+    if (region == null)
+        throw new IllegalArgumentException("region is null");
 
-        OcrCapture cap = captureForOcr(region);
-        String txt = getOcr().readText(cap.preprocessed);
+    OcrCapture cap = captureForOcr(region);
+    String raw = getOcr().readText(cap.preprocessed);
+    String txt = (raw == null) ? "" : raw;
 
-        System.out.println("readText region=" + region + " => '" + txt + "'");
-        return (txt == null) ? "" : txt;
+    // Always persist the last OCR text alongside last images.
+    // This makes OCR failures diagnosable without needing deskpilot.ocr.dump=true.
+    try {
+        var cfg = getOcrConfig();
+        String preset = (cfg != null && cfg.preset != null) ? cfg.preset.name().toLowerCase() : "default";
+        String norm = normalizeOcrText(txt);
+
+        saveStepText(
+                "ocr_text_last_" + preset + ".txt",
+                "preset=" + preset + "\n" +
+                "region=" + region + "\n\n" +
+                "raw:\n" + txt + "\n\n" +
+                "normalized:\n" + norm + "\n"
+        );
+    } catch (Exception ignore) {
+        // diagnostics must never fail OCR reads
     }
+
+    System.out.println("readText region=" + region + " => '" + txt + "'");
+    return txt;
+}
+
+
 
     public BigDecimal readNumber(NormalizedRegion region) throws Exception {
         String t = readTextNormalized(region);

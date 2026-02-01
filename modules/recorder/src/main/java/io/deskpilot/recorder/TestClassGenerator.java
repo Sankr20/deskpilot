@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -16,43 +17,25 @@ public final class TestClassGenerator {
 
     // ---------------- JUnit 5 (project output; uses testkit) ----------------
 
-    public static void generateJUnit5(
-            String pkg,
-            String className,
-            List<RecordedAction> actions,
-            Path output
-    ) throws Exception {
+    public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output)
+            throws Exception {
         generateJUnit5(pkg, className, actions, output, false);
     }
 
-    public static void generateJUnit5(
-            String pkg,
-            String className,
-            List<RecordedAction> actions,
-            Path output,
-            boolean force
-    ) throws Exception {
+    public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
+            throws Exception {
         requireNonEmpty(actions);
         String src = buildJUnit5Source(pkg, className, actions);
         writeFile(output, src, force);
     }
 
-    public static Path generateJUnit5ToProjectDir(
-            String pkg,
-            String classNameOrBlank,
-            List<RecordedAction> actions,
-            Path projectDir
-    ) throws Exception {
+    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
+            throws Exception {
         return generateJUnit5ToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
     }
 
-    public static Path generateJUnit5ToProjectDir(
-            String pkg,
-            String classNameOrBlank,
-            List<RecordedAction> actions,
-            Path projectDir,
-            boolean force
-    ) throws Exception {
+    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
+            throws Exception {
         String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
                 ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
                 : classNameOrBlank;
@@ -85,52 +68,32 @@ public final class TestClassGenerator {
                 .resolve(pkg.replace('.', '/'))
                 .resolve(className + ".java");
 
-        // ALWAYS standalone for repo engine output (NO testkit)
         String src = buildEngineStandaloneJUnitSource(pkg, className, actions);
-
         writeFile(outFile, src, force);
         return outFile;
     }
 
     // ---------------- TestNG (project output; uses testkit) ----------------
 
-    public static void generateTestNG(
-            String pkg,
-            String className,
-            List<RecordedAction> actions,
-            Path output
-    ) throws Exception {
+    public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output)
+            throws Exception {
         generateTestNG(pkg, className, actions, output, false);
     }
 
-    public static void generateTestNG(
-            String pkg,
-            String className,
-            List<RecordedAction> actions,
-            Path output,
-            boolean force
-    ) throws Exception {
+    public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
+            throws Exception {
         requireNonEmpty(actions);
         String src = buildTestNGSource(pkg, className, actions);
         writeFile(output, src, force);
     }
 
-    public static Path generateTestNGToProjectDir(
-            String pkg,
-            String classNameOrBlank,
-            List<RecordedAction> actions,
-            Path projectDir
-    ) throws Exception {
+    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
+            throws Exception {
         return generateTestNGToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
     }
 
-    public static Path generateTestNGToProjectDir(
-            String pkg,
-            String classNameOrBlank,
-            List<RecordedAction> actions,
-            Path projectDir,
-            boolean force
-    ) throws Exception {
+    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
+            throws Exception {
 
         String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
                 ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
@@ -148,8 +111,9 @@ public final class TestClassGenerator {
     // ---------------- Source builders ----------------
 
     private static String buildJUnit5Source(String pkg, String className, List<RecordedAction> actions) {
-        StringBuilder sb = new StringBuilder();
+        List<RecordedAction> ordered = orderActions(actions);
 
+        StringBuilder sb = new StringBuilder();
         sb.append("package ").append(pkg).append(";\n\n");
         sb.append("import io.deskpilot.testkit.BaseDeskPilotTestJUnit5;\n");
         sb.append("import io.deskpilot.engine.NormalizedRegion;\n");
@@ -161,19 +125,20 @@ public final class TestClassGenerator {
         sb.append("  @Test\n");
         sb.append("  void recorded_flow() throws Exception {\n");
         sb.append("    session().step(\"recorded_flow\", () -> {\n\n");
+        sb.append("      final Duration WAIT_TIMEOUT = Duration.ofSeconds(5);\n\n");
 
-        emitActionsForProject(sb, actions);
+        emitActionsForProject(sb, ordered);
 
         sb.append("    });\n");
         sb.append("  }\n");
         sb.append("}\n");
-
         return sb.toString();
     }
 
     private static String buildTestNGSource(String pkg, String className, List<RecordedAction> actions) {
-        StringBuilder sb = new StringBuilder();
+        List<RecordedAction> ordered = orderActions(actions);
 
+        StringBuilder sb = new StringBuilder();
         sb.append("package ").append(pkg).append(";\n\n");
         sb.append("import io.deskpilot.testkit.BaseDeskPilotTestTestNG;\n");
         sb.append("import io.deskpilot.engine.NormalizedRegion;\n");
@@ -185,22 +150,20 @@ public final class TestClassGenerator {
         sb.append("  @Test\n");
         sb.append("  public void recorded_flow() throws Exception {\n");
         sb.append("    session().step(\"recorded_flow\", () -> {\n\n");
+        sb.append("      final Duration WAIT_TIMEOUT = Duration.ofSeconds(5);\n\n");
 
-        emitActionsForProject(sb, actions);
+        emitActionsForProject(sb, ordered);
 
         sb.append("    });\n");
         sb.append("  }\n");
         sb.append("}\n");
-
         return sb.toString();
     }
 
-    /**
-     * Standalone JUnit test for engine module (NO testkit dependency).
-     */
     private static String buildEngineStandaloneJUnitSource(String pkg, String className, List<RecordedAction> actions) {
-        StringBuilder sb = new StringBuilder();
+        List<RecordedAction> ordered = orderActions(actions);
 
+        StringBuilder sb = new StringBuilder();
         sb.append("package ").append(pkg).append(";\n\n");
         sb.append("import io.deskpilot.engine.DeskPilotSession;\n");
         sb.append("import io.deskpilot.engine.NormalizedRegion;\n");
@@ -213,110 +176,109 @@ public final class TestClassGenerator {
         sb.append("  @Test\n");
         sb.append("  void recorded_flow() throws Exception {\n");
         sb.append("    try (DeskPilotSession s = DeskPilotSession.attachPickWindow(\"recorded-flow\")) {\n");
-        sb.append("      Actions a = new Actions(s);\n\n");
+        sb.append("      Actions a = new Actions(s);\n");
+        sb.append("      final Duration WAIT_TIMEOUT = Duration.ofSeconds(5);\n\n");
 
-        int idx = 1, fillIdx = 1, clickIdx = 1, waitIdx = 1;
-
-        for (RecordedAction ra : actions) {
-
-            if (ra instanceof RecordedAction.Fill f) {
-                String var = "r" + idx;
-                emitRegion(sb, var, f.region());
-
-                sb.append("      a.fill(")
-                        .append(pointLocatorExpr("rec_fill_" + pad2(fillIdx), var))
-                        .append(", ")
-                        .append(javaString(f.value()))
-                        .append(");\n\n");
-
-                idx++; fillIdx++;
-                continue;
-            }
-
-            if (ra instanceof RecordedAction.Click c) {
-                String var = "r" + idx;
-                emitRegion(sb, var, c.region());
-
-                sb.append("      a.click(")
-                        .append(pointLocatorExpr("rec_click_" + pad2(clickIdx), var))
-                        .append(");\n\n");
-
-                idx++; clickIdx++;
-                continue;
-            }
-
-            if (ra instanceof RecordedAction.WaitText w) {
-                String var = "r" + idx;
-                emitRegion(sb, var, w.region());
-
-                sb.append("      a.withTimeout(Duration.ofMillis(5000)).waitFor(")
-                        .append("Locators.ocrContains(\"rec_wait_")
-                        .append(pad2(waitIdx))
-                        .append("\", ")
-                        .append(var)
-                        .append(", ")
-                        .append(javaString(w.expectedContains()))
-                        .append("));\n\n");
-
-                idx++; waitIdx++;
-            }
-        }
+        emitActionsForEngineStandalone(sb, ordered);
 
         sb.append("    }\n");
         sb.append("  }\n");
         sb.append("}\n");
-
         return sb.toString();
     }
 
+    // ---------------- Emitters ----------------
+
     private static void emitActionsForProject(StringBuilder sb, List<RecordedAction> actions) {
-        int stepIndex = 1;
+        int i = 1;
         int fillIndex = 1;
         int clickIndex = 1;
         int waitIndex = 1;
 
         for (RecordedAction a : actions) {
 
+            String regionVar = "r" + pad2(i);
             if (a instanceof RecordedAction.Fill f) {
-                String var = "r" + stepIndex;
-                emitRegion(sb, var, f.region());
-
+                emitRegion(sb, regionVar, f.region());
                 sb.append("      actions().fill(")
-                        .append(pointLocatorExpr("rec_fill_" + pad2(fillIndex), var))
+                        .append(pointLocatorExpr("rec_fill_" + pad2(fillIndex), regionVar))
                         .append(", ")
                         .append(javaString(f.value()))
                         .append(");\n\n");
-
-                stepIndex++; fillIndex++;
+                fillIndex++;
+                i++;
                 continue;
             }
 
             if (a instanceof RecordedAction.Click c) {
-                String var = "r" + stepIndex;
-                emitRegion(sb, var, c.region());
-
+                emitRegion(sb, regionVar, c.region());
                 sb.append("      actions().click(")
-                        .append(pointLocatorExpr("rec_click_" + pad2(clickIndex), var))
+                        .append(pointLocatorExpr("rec_click_" + pad2(clickIndex), regionVar))
                         .append(");\n\n");
-
-                stepIndex++; clickIndex++;
+                clickIndex++;
+                i++;
                 continue;
             }
 
             if (a instanceof RecordedAction.WaitText w) {
-                String var = "r" + stepIndex;
-                emitRegion(sb, var, w.region());
-
-                sb.append("      actions().withTimeout(Duration.ofMillis(5000)).waitFor(")
+                emitRegion(sb, regionVar, w.region());
+                sb.append("      actions().withTimeout(WAIT_TIMEOUT).waitFor(")
                         .append("Locators.ocrContains(\"rec_wait_")
                         .append(pad2(waitIndex))
                         .append("\", ")
-                        .append(var)
+                        .append(regionVar)
                         .append(", ")
                         .append(javaString(w.expectedContains()))
                         .append("));\n\n");
+                waitIndex++;
+                i++;
+            }
+        }
+    }
 
-                stepIndex++; waitIndex++;
+    private static void emitActionsForEngineStandalone(StringBuilder sb, List<RecordedAction> actions) {
+        int i = 1;
+        int fillIndex = 1;
+        int clickIndex = 1;
+        int waitIndex = 1;
+
+        for (RecordedAction ra : actions) {
+
+            String regionVar = "r" + pad2(i);
+            if (ra instanceof RecordedAction.Fill f) {
+                emitRegion(sb, regionVar, f.region());
+                sb.append("      a.fill(")
+                        .append(pointLocatorExpr("rec_fill_" + pad2(fillIndex), regionVar))
+                        .append(", ")
+                        .append(javaString(f.value()))
+                        .append(");\n\n");
+                fillIndex++;
+                i++;
+                continue;
+            }
+
+            if (ra instanceof RecordedAction.Click c) {
+                emitRegion(sb, regionVar, c.region());
+                sb.append("      a.click(")
+                        .append(pointLocatorExpr("rec_click_" + pad2(clickIndex), regionVar))
+                        .append(");\n\n");
+                clickIndex++;
+                i++;
+                continue;
+            }
+
+            if (ra instanceof RecordedAction.WaitText w) {
+                emitRegion(sb, regionVar, w.region());
+                sb.append("      a.withTimeout(WAIT_TIMEOUT).waitFor(")
+                        .append("Locators.ocrContains(\"rec_wait_")
+                        .append(pad2(waitIndex))
+                        .append("\", ")
+                        .append(regionVar)
+                        .append(", ")
+                        .append(javaString(w.expectedContains()))
+                        .append("));\n\n");
+                waitIndex++;
+                i++;
             }
         }
     }
@@ -334,6 +296,25 @@ public final class TestClassGenerator {
                 regionVar + ".xPct + (" + regionVar + ".wPct/2.0), " +
                 regionVar + ".yPct + (" + regionVar + ".hPct/2.0))";
     }
+
+    // ---------------- Ordering ----------------
+
+    private static List<RecordedAction> orderActions(List<RecordedAction> actions) {
+        List<RecordedAction> nonWait = new ArrayList<>();
+        List<RecordedAction> waits = new ArrayList<>();
+
+        for (RecordedAction a : actions) {
+            if (a instanceof RecordedAction.WaitText) waits.add(a);
+            else nonWait.add(a);
+        }
+
+        List<RecordedAction> out = new ArrayList<>(actions.size());
+        out.addAll(nonWait);
+        out.addAll(waits);
+        return out;
+    }
+
+    // ---------------- Utils ----------------
 
     private static String pad2(int n) {
         return (n < 10) ? "0" + n : Integer.toString(n);
@@ -363,22 +344,11 @@ public final class TestClassGenerator {
         Files.createDirectories(file.toAbsolutePath().normalize().getParent());
 
         if (force) {
-            Files.writeString(
-                    file,
-                    content,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING,
-                    StandardOpenOption.WRITE
-            );
+            Files.writeString(file, content, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } else {
-            Files.writeString(
-                    file,
-                    content,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW,
-                    StandardOpenOption.WRITE
-            );
+            Files.writeString(file, content, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         }
     }
 

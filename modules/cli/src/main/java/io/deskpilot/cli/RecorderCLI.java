@@ -8,6 +8,7 @@ import io.deskpilot.recorder.TestClassGenerator;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.util.Locale;
 
 public final class RecorderCLI {
 
@@ -24,7 +25,6 @@ public final class RecorderCLI {
 
         if (args == null) args = new String[0];
 
-        // Quick help
         if (args.length >= 1 && Main.isHelp(args[0])) {
             printUsage();
             return 0;
@@ -52,7 +52,7 @@ public final class RecorderCLI {
                     System.err.println("Missing value after --framework (use junit5|testng)");
                     return 2;
                 }
-                String f = args[++i].trim().toLowerCase();
+                String f = args[++i].trim().toLowerCase(Locale.ROOT);
                 if ("junit5".equals(f)) {
                     framework = Framework.JUNIT5;
                 } else if ("testng".equals(f)) {
@@ -73,7 +73,6 @@ public final class RecorderCLI {
                 continue;
             }
 
-            // First non-flag token = output file (optional)
             if (!a.startsWith("--") && explicitOutFile == null) {
                 explicitOutFile = Path.of(a);
             }
@@ -168,6 +167,17 @@ public final class RecorderCLI {
                             continue;
                         }
 
+                        // ---- Suggest safer token (helps with OCR dropping last char) ----
+                        String suggested = suggestStableExpected(expected);
+                        if (!suggested.equals(expected)) {
+                            System.out.println("Tip: OCR may drop a character. Suggested safer token: \"" + suggested + "\"");
+                            System.out.print("Press ENTER to use suggested, or type override: ");
+                            String override = br.readLine();
+                            if (override == null) override = "";
+                            override = override.trim();
+                            expected = override.isEmpty() ? suggested : override;
+                        }
+
                         recorder.recordWaitText(region, expected);
                         System.out.println("Recorded: WAIT " + region + " contains \"" + expected + "\"");
                     } catch (IllegalStateException cancel) {
@@ -205,7 +215,6 @@ public final class RecorderCLI {
                     || isDeskPilotRepoWrite(explicitOutFile, projectDir);
 
             if (repoWrite) {
-                // repo output writes into modules/engine; overwrite only with --force
                 written = TestClassGenerator.generateIntoRepoEngineGenerated(actions, force);
                 System.out.println("Recorded test written to " + written);
                 return 0;
@@ -222,7 +231,7 @@ public final class RecorderCLI {
                 }
                 written = outFile;
 
-            } else if (projectDir != null) {
+            } else {
                 Path root = SafePaths.root(projectDir);
                 SafePaths.ensureDir(root);
 
@@ -231,9 +240,6 @@ public final class RecorderCLI {
                 } else {
                     written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, root, force);
                 }
-
-            } else {
-                written = TestClassGenerator.generateIntoRepoEngineGenerated(actions, force);
             }
 
             System.out.println("Recorded test written to " + written);
@@ -244,6 +250,22 @@ public final class RecorderCLI {
             t.printStackTrace(System.err);
             return 1;
         }
+    }
+
+    private static String suggestStableExpected(String expected) {
+        String e = expected.trim();
+        if (e.length() <= 4) return e;
+
+        // common OCR issue: trailing char drop on tight crops
+        // suggestion: a stable prefix (5 chars), but keep longer if already short.
+        int n = Math.min(6, e.length());
+        String prefix = e.substring(0, n);
+
+        // only suggest when it *meaningfully* changes the token
+        if (e.length() >= 7 || e.endsWith("ed")) {
+            return prefix;
+        }
+        return e;
     }
 
     private static void printUsage() {
@@ -278,7 +300,7 @@ public final class RecorderCLI {
 
     private static boolean isInsideDeskPilotRepoEngine(Path p) {
         if (p == null) return false;
-        String s = p.toString().replace("\\", "/").toLowerCase();
+        String s = p.toString().replace("\\", "/").toLowerCase(Locale.ROOT);
         return s.contains("/modules/engine/") || s.endsWith("/modules/engine");
     }
 

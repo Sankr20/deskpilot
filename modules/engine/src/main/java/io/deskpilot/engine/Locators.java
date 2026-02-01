@@ -53,6 +53,17 @@ public static Locator ocrContains(String label, NormalizedRegion region, String 
     return new OcrContainsLocator(label, region, expectedContains);
 }
 
+public static Locator ocrContains(String label, Locator regionLocator, String expectedContains) {
+    Objects.requireNonNull(regionLocator, "regionLocator is null");
+    if (regionLocator.kind().name().equals("REGION") == false) {
+        throw new IllegalArgumentException("ocrContains requires a REGION locator");
+    }
+    // This requires RegionLocator to expose its region; see note below.
+    RegionLocator rl = (RegionLocator) regionLocator;
+    return ocrContains(label, rl.region(), expectedContains);
+}
+
+
 // --- DESKPILOT:AUTOGEN:START
 /** btn_point */
 public static final Locator BTNPOINT =

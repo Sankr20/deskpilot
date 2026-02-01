@@ -8,7 +8,7 @@ public final class OcrPipeline {
 
     private OcrPipeline() {}
 
-   public static Result preprocess(BufferedImage cropped, OcrConfig cfg) {
+public static Result preprocess(BufferedImage cropped, OcrConfig cfg) {
     if (cropped == null) throw new IllegalArgumentException("cropped is null");
     if (cfg == null) cfg = OcrConfig.defaults();
 
@@ -18,17 +18,18 @@ public final class OcrPipeline {
         img = ImagePreprocess.toGray(img);
     }
 
-    // ✅ enable thresholding now
-    if (cfg.threshold01_255 != null) {
-        img = ImagePreprocess.threshold(img, cfg.threshold01_255);
-    }
-
+    // For UI text, scaling before threshold usually produces better OCR input
     if (cfg.scaleFactor != 1.0) {
         img = ImagePreprocess.scale(img, cfg.scaleFactor);
     }
 
+    if (cfg.threshold01_255 != null) {
+        img = ImagePreprocess.threshold(img, cfg.threshold01_255);
+    }
+
     return new Result(img, cfg.scaleFactor);
 }
+
 
 
     public static final class Result {
