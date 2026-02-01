@@ -1,5 +1,4 @@
-package io.deskpilot.cli;
-
+package io.deskpilot.common;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -11,16 +10,19 @@ public final class SafePaths {
     private SafePaths() {}
 
     public static Path root(Path dir) throws IOException {
+        if (dir == null) throw new IllegalArgumentException("dir is null");
         Path abs = dir.toAbsolutePath().normalize();
         if (Files.exists(abs)) return abs.toRealPath().normalize();
         return abs;
     }
 
     public static void ensureDir(Path dir) throws IOException {
+        if (dir == null) throw new IllegalArgumentException("dir is null");
         Files.createDirectories(dir);
     }
 
     public static void ensureDirEmptyOrForce(Path dir, boolean force) throws IOException {
+        if (dir == null) throw new IllegalArgumentException("dir is null");
         if (!Files.exists(dir)) return;
         if (!Files.isDirectory(dir)) {
             throw new IllegalArgumentException("Target exists but is not a directory: " + dir);
@@ -29,13 +31,14 @@ public final class SafePaths {
             if (ds.iterator().hasNext() && !force) {
                 throw new IllegalArgumentException(
                         "Refusing to write into non-empty directory: " + dir + "\n" +
-                        "Re-run with --force to overwrite."
+                                "Re-run with --force to overwrite."
                 );
             }
         }
     }
 
     public static Path under(Path root, String... parts) {
+        if (root == null) throw new IllegalArgumentException("root is null");
         Path out = root;
         for (String p : parts) out = out.resolve(p);
         out = out.toAbsolutePath().normalize();
@@ -47,7 +50,21 @@ public final class SafePaths {
         return out;
     }
 
+    /** Guardrail: ensure a target path is under the given root. */
+    public static Path requireUnderRoot(Path root, Path target) {
+        if (root == null) throw new IllegalArgumentException("root is null");
+        if (target == null) throw new IllegalArgumentException("target is null");
+
+        Path r = root.toAbsolutePath().normalize();
+        Path t = target.toAbsolutePath().normalize();
+        if (!t.startsWith(r)) {
+            throw new IllegalArgumentException("Refusing to write outside projectDir. root=" + r + " target=" + t);
+        }
+        return t;
+    }
+
     public static void writeString(Path file, String content, boolean force) throws IOException {
+        if (file == null) throw new IllegalArgumentException("file is null");
         ensureDir(file.getParent());
         if (force) {
             Files.writeString(file, content, StandardCharsets.UTF_8, CREATE, TRUNCATE_EXISTING, WRITE);
@@ -66,11 +83,28 @@ public final class SafePaths {
 
     public static void rejectReservedWindowsName(String name) {
         if (name == null) return;
-        String n = name.trim().toLowerCase(Locale.ROOT);
+
+        String raw = name.trim();
+
+        // Windows: disallow trailing dots/spaces in filenames
+        while (raw.endsWith(".") || raw.endsWith(" ")) {
+            raw = raw.substring(0, raw.length() - 1);
+        }
+        if (raw.isEmpty()) {
+            throw new IllegalArgumentException("Invalid file name: " + name);
+        }
+
+        String n = raw.toLowerCase(Locale.ROOT);
 
         int slash = Math.max(n.lastIndexOf('/'), n.lastIndexOf('\\'));
         if (slash >= 0) n = n.substring(slash + 1);
 
+        // reject "." and ".."
+        if (n.equals(".") || n.equals("..")) {
+            throw new IllegalArgumentException("Invalid file name: " + name);
+        }
+
+        // strip extension for reserved-name check
         int dot = n.indexOf('.');
         if (dot > 0) n = n.substring(0, dot);
 

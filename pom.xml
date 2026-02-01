@@ -33,6 +33,7 @@
     <module>modules/recorder</module>
     <module>modules/deskpilot</module>
     <module>modules/deskpilot-testkit</module>
+    <module>modules/common</module>
   </modules>
 
   <dependencyManagement>

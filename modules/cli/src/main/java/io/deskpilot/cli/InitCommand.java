@@ -3,6 +3,8 @@ package io.deskpilot.cli;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+import io.deskpilot.common.SafePaths;
+
 public final class InitCommand {
 
     /**

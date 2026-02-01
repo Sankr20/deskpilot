@@ -1,5 +1,6 @@
 package io.deskpilot.cli;
 
+import io.deskpilot.common.SafePaths;
 import io.deskpilot.engine.DeskPilot;
 import io.deskpilot.engine.RunOptions;
 import io.deskpilot.recorder.RecorderManager;
@@ -73,6 +74,7 @@ public final class RecorderCLI {
                 continue;
             }
 
+            // First non-flag token = output file (optional)
             if (!a.startsWith("--") && explicitOutFile == null) {
                 explicitOutFile = Path.of(a);
             }
@@ -85,6 +87,33 @@ public final class RecorderCLI {
                     "  deskpilot record --framework testng --projectDir <dir>\n" +
                     "  (add --force to overwrite)\n");
             return 2;
+        }
+
+        // ---------------- Guardrails (pre-flight) ----------------
+        Path root = null;
+        if (projectDir != null) {
+            try {
+                root = SafePaths.root(projectDir);
+                SafePaths.ensureDir(root);
+
+                // Guardrail: refuse to write into an existing non-empty src/test/java unless --force
+                // (applies when using --projectDir output mode)
+                Path testJava = SafePaths.under(root, "src", "test", "java");
+                SafePaths.ensureDir(testJava);
+                SafePaths.ensureDirEmptyOrForce(testJava, force);
+            } catch (Exception e) {
+                System.err.println("Project directory rejected: " + e.getMessage());
+                return 2;
+            }
+        }
+
+        if (explicitOutFile != null) {
+            // Guardrail: require .java for explicit output
+            String name = explicitOutFile.getFileName() == null ? "" : explicitOutFile.getFileName().toString();
+            if (!name.toLowerCase(Locale.ROOT).endsWith(".java")) {
+                System.err.println("Output file must end with .java: " + explicitOutFile);
+                return 2;
+            }
         }
 
         RunOptions opts = RunOptions.builder()
@@ -224,6 +253,12 @@ public final class RecorderCLI {
                 Path outFile = explicitOutFile.toAbsolutePath().normalize();
                 SafePaths.rejectReservedWindowsName(outFile.getFileName().toString());
 
+                // Guardrail: if projectDir is provided, outFile must be inside it
+                if (projectDir != null) {
+                    Path normRoot = SafePaths.root(projectDir);
+                    SafePaths.requireUnderRoot(normRoot, outFile);
+                }
+
                 if (framework == Framework.JUNIT5) {
                     TestClassGenerator.generateJUnit5("com.example", "RecordedTest", actions, outFile, force);
                 } else {
@@ -232,13 +267,14 @@ public final class RecorderCLI {
                 written = outFile;
 
             } else {
-                Path root = SafePaths.root(projectDir);
-                SafePaths.ensureDir(root);
+                // projectDir mode (generator will create src/test/java/... inside this dir)
+                Path normRoot = SafePaths.root(projectDir);
+                SafePaths.ensureDir(normRoot);
 
                 if (framework == Framework.JUNIT5) {
-                    written = TestClassGenerator.generateJUnit5ToProjectDir("com.example", "", actions, root, force);
+                    written = TestClassGenerator.generateJUnit5ToProjectDir("com.example", "", actions, normRoot, force);
                 } else {
-                    written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, root, force);
+                    written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, normRoot, force);
                 }
             }
 
@@ -256,12 +292,9 @@ public final class RecorderCLI {
         String e = expected.trim();
         if (e.length() <= 4) return e;
 
-        // common OCR issue: trailing char drop on tight crops
-        // suggestion: a stable prefix (5 chars), but keep longer if already short.
         int n = Math.min(6, e.length());
         String prefix = e.substring(0, n);
 
-        // only suggest when it *meaningfully* changes the token
         if (e.length() >= 7 || e.endsWith("ed")) {
             return prefix;
         }
@@ -271,16 +304,16 @@ public final class RecorderCLI {
     private static void printUsage() {
         System.out.println(
                 "Usage:\n" +
-                "  deskpilot record\n" +
-                "  deskpilot record --force\n" +
-                "  deskpilot record --framework testng <outputFile>\n" +
-                "  deskpilot record --framework testng --projectDir <dir>\n" +
-                "\n" +
-                "Options:\n" +
-                "  --framework junit5|testng\n" +
-                "  --projectDir <dir>\n" +
-                "  --force\n" +
-                "  --help\n"
+                        "  deskpilot record\n" +
+                        "  deskpilot record --force\n" +
+                        "  deskpilot record --framework testng <outputFile>\n" +
+                        "  deskpilot record --framework testng --projectDir <dir>\n" +
+                        "\n" +
+                        "Options:\n" +
+                        "  --framework junit5|testng\n" +
+                        "  --projectDir <dir>\n" +
+                        "  --force\n" +
+                        "  --help\n"
         );
     }
 

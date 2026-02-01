@@ -1,10 +1,9 @@
 package io.deskpilot.recorder;
 
+import io.deskpilot.common.SafePaths;
 import io.deskpilot.engine.NormalizedRegion;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -25,8 +24,11 @@ public final class TestClassGenerator {
     public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
             throws Exception {
         requireNonEmpty(actions);
+        SafePaths.validateJavaPackageOrThrow(pkg);
+        requireJavaFile(output);
+
         String src = buildJUnit5Source(pkg, className, actions);
-        writeFile(output, src, force);
+        SafePaths.writeString(output.toAbsolutePath().normalize(), src, force);
     }
 
     public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
@@ -36,14 +38,15 @@ public final class TestClassGenerator {
 
     public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
             throws Exception {
+        requireNonEmpty(actions);
+        SafePaths.validateJavaPackageOrThrow(pkg);
+
         String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
                 ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
                 : classNameOrBlank;
 
-        Path outFile = projectDir
-                .resolve("src/test/java")
-                .resolve(pkg.replace('.', '/'))
-                .resolve(className + ".java");
+        Path root = SafePaths.root(projectDir);
+        Path outFile = SafePaths.under(root, "src", "test", "java", pkg.replace('.', '/'), className + ".java");
 
         generateJUnit5(pkg, className, actions, outFile, force);
         return outFile;
@@ -66,10 +69,19 @@ public final class TestClassGenerator {
         Path outFile = Path.of("modules", "engine")
                 .resolve("src/test/java")
                 .resolve(pkg.replace('.', '/'))
-                .resolve(className + ".java");
+                .resolve(className + ".java")
+                .toAbsolutePath()
+                .normalize();
 
+        requireJavaFile(outFile);
+
+        // Always standalone for engine output
         String src = buildEngineStandaloneJUnitSource(pkg, className, actions);
-        writeFile(outFile, src, force);
+
+        // Use SafePaths for reserved-name protection + safe write semantics
+        SafePaths.rejectReservedWindowsName(outFile.getFileName().toString());
+        SafePaths.writeString(outFile, src, force);
+
         return outFile;
     }
 
@@ -83,8 +95,11 @@ public final class TestClassGenerator {
     public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
             throws Exception {
         requireNonEmpty(actions);
+        SafePaths.validateJavaPackageOrThrow(pkg);
+        requireJavaFile(output);
+
         String src = buildTestNGSource(pkg, className, actions);
-        writeFile(output, src, force);
+        SafePaths.writeString(output.toAbsolutePath().normalize(), src, force);
     }
 
     public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
@@ -94,15 +109,15 @@ public final class TestClassGenerator {
 
     public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
             throws Exception {
+        requireNonEmpty(actions);
+        SafePaths.validateJavaPackageOrThrow(pkg);
 
         String className = (classNameOrBlank == null || classNameOrBlank.isBlank())
                 ? ("RecordedTest_" + TS.format(LocalDateTime.now()) + "Test")
                 : classNameOrBlank;
 
-        Path outFile = projectDir
-                .resolve("src/test/java")
-                .resolve(pkg.replace('.', '/'))
-                .resolve(className + ".java");
+        Path root = SafePaths.root(projectDir);
+        Path outFile = SafePaths.under(root, "src", "test", "java", pkg.replace('.', '/'), className + ".java");
 
         generateTestNG(pkg, className, actions, outFile, force);
         return outFile;
@@ -190,86 +205,48 @@ public final class TestClassGenerator {
     // ---------------- Emitters ----------------
 
     private static void emitActionsForProject(StringBuilder sb, List<RecordedAction> actions) {
-        int i = 1;
-        int fillIndex = 1;
-        int clickIndex = 1;
-        int waitIndex = 1;
-
-        for (RecordedAction a : actions) {
-
-            String regionVar = "r" + pad2(i);
-            if (a instanceof RecordedAction.Fill f) {
-                emitRegion(sb, regionVar, f.region());
-                sb.append("      actions().fill(")
-                        .append(pointLocatorExpr("rec_fill_" + pad2(fillIndex), regionVar))
-                        .append(", ")
-                        .append(javaString(f.value()))
-                        .append(");\n\n");
-                fillIndex++;
-                i++;
-                continue;
-            }
-
-            if (a instanceof RecordedAction.Click c) {
-                emitRegion(sb, regionVar, c.region());
-                sb.append("      actions().click(")
-                        .append(pointLocatorExpr("rec_click_" + pad2(clickIndex), regionVar))
-                        .append(");\n\n");
-                clickIndex++;
-                i++;
-                continue;
-            }
-
-            if (a instanceof RecordedAction.WaitText w) {
-                emitRegion(sb, regionVar, w.region());
-                sb.append("      actions().withTimeout(WAIT_TIMEOUT).waitFor(")
-                        .append("Locators.ocrContains(\"rec_wait_")
-                        .append(pad2(waitIndex))
-                        .append("\", ")
-                        .append(regionVar)
-                        .append(", ")
-                        .append(javaString(w.expectedContains()))
-                        .append("));\n\n");
-                waitIndex++;
-                i++;
-            }
-        }
+        emitActions(sb, actions, /*standalone*/ false);
     }
 
     private static void emitActionsForEngineStandalone(StringBuilder sb, List<RecordedAction> actions) {
-        int i = 1;
+        emitActions(sb, actions, /*standalone*/ true);
+    }
+
+    private static void emitActions(StringBuilder sb, List<RecordedAction> actions, boolean standalone) {
+        int step = 1;
         int fillIndex = 1;
         int clickIndex = 1;
         int waitIndex = 1;
 
         for (RecordedAction ra : actions) {
+            String regionVar = "r" + pad2(step);
+            String receiver = standalone ? "a" : "actions()";
 
-            String regionVar = "r" + pad2(i);
             if (ra instanceof RecordedAction.Fill f) {
                 emitRegion(sb, regionVar, f.region());
-                sb.append("      a.fill(")
+                sb.append("      ").append(receiver).append(".fill(")
                         .append(pointLocatorExpr("rec_fill_" + pad2(fillIndex), regionVar))
                         .append(", ")
                         .append(javaString(f.value()))
                         .append(");\n\n");
                 fillIndex++;
-                i++;
+                step++;
                 continue;
             }
 
             if (ra instanceof RecordedAction.Click c) {
                 emitRegion(sb, regionVar, c.region());
-                sb.append("      a.click(")
+                sb.append("      ").append(receiver).append(".click(")
                         .append(pointLocatorExpr("rec_click_" + pad2(clickIndex), regionVar))
                         .append(");\n\n");
                 clickIndex++;
-                i++;
+                step++;
                 continue;
             }
 
             if (ra instanceof RecordedAction.WaitText w) {
                 emitRegion(sb, regionVar, w.region());
-                sb.append("      a.withTimeout(WAIT_TIMEOUT).waitFor(")
+                sb.append("      ").append(receiver).append(".withTimeout(WAIT_TIMEOUT).waitFor(")
                         .append("Locators.ocrContains(\"rec_wait_")
                         .append(pad2(waitIndex))
                         .append("\", ")
@@ -278,7 +255,7 @@ public final class TestClassGenerator {
                         .append(javaString(w.expectedContains()))
                         .append("));\n\n");
                 waitIndex++;
-                i++;
+                step++;
             }
         }
     }
@@ -300,6 +277,9 @@ public final class TestClassGenerator {
     // ---------------- Ordering ----------------
 
     private static List<RecordedAction> orderActions(List<RecordedAction> actions) {
+        // Safe heuristic:
+        // - Keep clicks/fills in original order
+        // - Move waits to the end (preserve relative order of waits)
         List<RecordedAction> nonWait = new ArrayList<>();
         List<RecordedAction> waits = new ArrayList<>();
 
@@ -316,6 +296,16 @@ public final class TestClassGenerator {
 
     // ---------------- Utils ----------------
 
+    private static void requireJavaFile(Path file) {
+        if (file == null) throw new IllegalArgumentException("output file is null");
+        Path abs = file.toAbsolutePath().normalize();
+        String name = abs.getFileName() == null ? "" : abs.getFileName().toString();
+        SafePaths.rejectReservedWindowsName(name);
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".java")) {
+            throw new IllegalArgumentException("Output file must end with .java: " + abs);
+        }
+    }
+
     private static String pad2(int n) {
         return (n < 10) ? "0" + n : Integer.toString(n);
     }
@@ -325,6 +315,7 @@ public final class TestClassGenerator {
     }
 
     private static String javaString(String s) {
+        if (s == null) s = "";
         return "\"" + s
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -337,18 +328,6 @@ public final class TestClassGenerator {
     private static void requireNonEmpty(List<RecordedAction> actions) {
         if (actions == null || actions.isEmpty()) {
             throw new IllegalArgumentException("Refusing to generate test: no actions were recorded.");
-        }
-    }
-
-    private static void writeFile(Path file, String content, boolean force) throws IOException {
-        Files.createDirectories(file.toAbsolutePath().normalize().getParent());
-
-        if (force) {
-            Files.writeString(file, content, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-        } else {
-            Files.writeString(file, content, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         }
     }
 
