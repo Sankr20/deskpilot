@@ -37,7 +37,7 @@
       <version>1.10.3</version>
     </dependency>
 
-    <!-- SmokeCommand references demo-app in src/main/java -->
+    <!-- Smoke command references demo-app in src/main/java -->
     <dependency>
       <groupId>io.deskpilot</groupId>
       <artifactId>demo-app</artifactId>
@@ -113,27 +113,6 @@
       <build>
         <plugins>
 
-          <!-- Optional: populate buildNumber if available; must NOT fail build -->
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>buildnumber-maven-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>buildnumber</id>
-                <phase>validate</phase>
-                <goals>
-                  <goal>create</goal>
-                </goals>
-                <configuration>
-                  <doCheck>false</doCheck>
-                  <doUpdate>false</doUpdate>
-                  <failOnError>false</failOnError>
-                  <revisionOnScmFailure>dev</revisionOnScmFailure>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
           <!-- Stage files into target/dist/deskpilot -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -187,7 +166,7 @@
             </executions>
           </plugin>
 
-          <!-- Zip it (verify runs after package, so staging is guaranteed complete) -->
+          <!-- Zip it reliably (verify runs after package) -->
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-antrun-plugin</artifactId>
@@ -201,9 +180,12 @@
                 </goals>
                 <configuration>
                   <target>
+                    <!-- Ensure folders exist -->
                     <mkdir dir="${project.build.directory}/dist"/>
-                    <delete file="${project.build.directory}/deskpilot-dist.zip" failonerror="false"/>
+                    <mkdir dir="${project.build.directory}/dist/deskpilot"/>
 
+                    <!-- Recreate zip -->
+                    <delete file="${project.build.directory}/deskpilot-dist.zip" failonerror="false"/>
                     <zip destfile="${project.build.directory}/deskpilot-dist.zip">
                       <fileset dir="${project.build.directory}/dist"/>
                     </zip>
