@@ -23,7 +23,8 @@ public final class Artifacts {
     if (outDir == null) throw new IllegalArgumentException("outDir is null");
     this.outDir = outDir;
 
-    int max = 0;
+   // PRD 2.2: reserve 01 for startup artifacts (even if startup folder isn't created yet)
+int max = 1;
 
     try (var stream = Files.list(outDir)) {
         for (Path p : stream.toList()) {

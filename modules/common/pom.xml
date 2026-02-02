@@ -4,14 +4,14 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-  <groupId>io.deskpilot</groupId>
-  <artifactId>deskpilot</artifactId>
-  <version>0.1.1</version>
-  <relativePath>../../pom.xml</relativePath>
-</parent>
-
+    <groupId>io.deskpilot</groupId>
+    <artifactId>deskpilot</artifactId>
+    <version>0.1.1</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
 
   <artifactId>deskpilot-common</artifactId>
   <name>deskpilot-common</name>
+  <packaging>jar</packaging>
 
 </project>

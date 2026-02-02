@@ -13,6 +13,8 @@ public final class InitCommand {
      *
      * return 0 success, 2 usage
      */
+
+    
     public int run(String[] args) throws Exception {
         if (args == null) args = new String[0];
 
@@ -56,10 +58,14 @@ public final class InitCommand {
         String groupId = "com.example";
         String artifactId = dir.getFileName().toString().replaceAll("[^a-zA-Z0-9_-]", "-");
 
-        String deskpilotVersion = InitCommand.class.getPackage().getImplementationVersion();
-        if (deskpilotVersion == null || deskpilotVersion.isBlank()) {
-            deskpilotVersion = "0.1.0";
-        }
+        String deskpilotVersion = System.getProperty("deskpilot.version");
+if (deskpilotVersion == null || deskpilotVersion.isBlank()) {
+    deskpilotVersion = InitCommand.class.getPackage().getImplementationVersion();
+}
+if (deskpilotVersion == null || deskpilotVersion.isBlank()) {
+    deskpilotVersion = "0.1.1";
+}
+
 
         String pom;
         String packagePath = packageName.replace('.', '/');

@@ -897,8 +897,18 @@ public void step(String stepName, StepBody body) throws Exception {
         throw new IllegalArgumentException("body is null");
 
     Path prev = currentStepDir;
-    Path stepDir = artifacts.stepDir(stepName);
-    currentStepDir = stepDir;
+
+Path stepDir;
+if ("startup".equals(stepName)) {
+    // PRD: reserved folder for attach/startup evidence
+    stepDir = artifacts.outDir().resolve("01-startup");
+    Files.createDirectories(stepDir);
+} else {
+    stepDir = artifacts.stepDir(stepName);
+}
+
+currentStepDir = stepDir;
+
 
     System.out.println();
     System.out.println("=== STEP: " + stepName + " ===");

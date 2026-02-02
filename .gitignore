@@ -27,5 +27,7 @@ dist/
 *.class
 META-INF/
 
+MyProj/
+
 # Generated recorder tests (local artifacts)
 modules/engine/src/test/java/io/deskpilot/tests/generated/
