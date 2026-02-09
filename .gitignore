@@ -31,3 +31,16 @@ MyProj/
 
 # Generated recorder tests (local artifacts)
 modules/engine/src/test/java/io/deskpilot/tests/generated/
+
+# DeskPilot runtime cache
+.deskpilot/
+deskpilot.properties
+
+# Local wrappers / launchers
+deskpilotw
+deskpilotw.cmd
+deskpilotw.ps1
+
+# Generated tests (examples only)
+src/test/java/**/generated/
+
