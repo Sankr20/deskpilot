@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.Locale;
 
-import static java.nio.file.StandardOpenOption.*;
 
 public final class SafePaths {
     private SafePaths() {}
@@ -63,15 +62,30 @@ public final class SafePaths {
         return t;
     }
 
-    public static void writeString(Path file, String content, boolean force) throws IOException {
-        if (file == null) throw new IllegalArgumentException("file is null");
-        ensureDir(file.getParent());
-        if (force) {
-            Files.writeString(file, content, StandardCharsets.UTF_8, CREATE, TRUNCATE_EXISTING, WRITE);
-        } else {
-            Files.writeString(file, content, StandardCharsets.UTF_8, CREATE_NEW, WRITE);
-        }
+  public static void writeString(Path p, String content, boolean force) throws IOException {
+    if (p == null) throw new IllegalArgumentException("path is null");
+    ensureParentDir(p);
+
+    if (force) {
+        Files.writeString(
+                p,
+                content,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
+    } else {
+        Files.writeString(
+                p,
+                content,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE
+        );
     }
+}
+
 
     public static void validateJavaPackageOrThrow(String pkg) {
         if (pkg == null || pkg.isBlank()) return;
@@ -80,6 +94,14 @@ public final class SafePaths {
             throw new IllegalArgumentException("Invalid package name: " + pkg);
         }
     }
+
+    private static void ensureParentDir(Path p) throws IOException {
+    Path parent = p.toAbsolutePath().normalize().getParent();
+    if (parent != null) {
+        Files.createDirectories(parent);
+    }
+}
+
 
     public static void rejectReservedWindowsName(String name) {
         if (name == null) return;

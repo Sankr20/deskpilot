@@ -19,12 +19,12 @@ public final class Artifacts {
     private final Path outDir;
     private final AtomicInteger step;
 
-    public Artifacts(Path outDir) throws Exception {
+   public Artifacts(Path outDir) throws Exception {
     if (outDir == null) throw new IllegalArgumentException("outDir is null");
     this.outDir = outDir;
 
-   // PRD 2.2: reserve 01 for startup artifacts (even if startup folder isn't created yet)
-int max = 1;
+    // PRD 2.2: 01-startup is reserved, so first real step is 02-...
+    int maxSeen = 1;
 
     try (var stream = Files.list(outDir)) {
         for (Path p : stream.toList()) {
@@ -33,17 +33,22 @@ int max = 1;
             String name = p.getFileName().toString();
 
             // match "NN-..."
-            if (name.length() >= 3 && Character.isDigit(name.charAt(0)) && Character.isDigit(name.charAt(1)) && name.charAt(2) == '-') {
+            if (name.length() >= 3
+                    && Character.isDigit(name.charAt(0))
+                    && Character.isDigit(name.charAt(1))
+                    && name.charAt(2) == '-') {
                 try {
                     int n = Integer.parseInt(name.substring(0, 2));
-                    if (n > max) max = n;
+                    if (n > maxSeen) maxSeen = n;
                 } catch (NumberFormatException ignore) {}
             }
         }
     }
 
-    this.step = new AtomicInteger(max);
+    // step holds "last allocated step number"
+    this.step = new AtomicInteger(maxSeen);
 }
+
 
 
     public Path outDir() {
@@ -51,13 +56,19 @@ int max = 1;
     }
 
     /** Starts a step and returns the step folder path. */
-    public Path stepDir(String label) throws Exception {
-        int n = step.incrementAndGet();
-        String dirName = String.format(Locale.US, "%02d-%s", n, safeFile(label));
-        Path dir = outDir.resolve(dirName);
-        Files.createDirectories(dir);
-        return dir;
-    }
+public Path stepDir(String label) throws Exception {
+    String safe = safeFile(label);
+    if ("startup".equalsIgnoreCase(safe)) safe = "startup_step"; // avoid collision
+
+    int n = step.incrementAndGet();
+    if (n == 1) n = step.incrementAndGet(); // never allocate 01
+
+    String dirName = String.format(Locale.US, "%02d-%s", n, safe);
+    Path dir = outDir.resolve(dirName);
+    Files.createDirectories(dir);
+    return dir;
+}
+
 
     public Path savePng(Path stepDir, String fileName, BufferedImage img) throws Exception {
         if (stepDir == null) throw new IllegalArgumentException("stepDir is null");

@@ -74,51 +74,67 @@ private static final int OCR_MIN_CROP_H = 18;
 public static DeskPilotSession attachPickWindow(RunOptions options) throws Exception {
     DpiAwareness.enable();
 
-    long timeoutMs = options.attachTimeoutMs();
-    System.out.println("Click the target window to attach (timeout " + (timeoutMs / 1000) + "s)...");
-    HWND hwnd = WindowManager.pickWindowHandleOnClick(timeoutMs);
-    hwnd = WindowManager.toTopLevel(hwnd);
-
-    String title = WindowManager.getWindowTitle(hwnd);
-    Rectangle clientRectWin32 = WindowManager.getClientRectOnScreenOrThrow(hwnd);
-    Rectangle clientRectRobot = RobotCoords.toRobotRect(clientRectWin32);
-
-    System.out.println("Selected window: " + title);
-    System.out.println("Client rect (win32): " + clientRectWin32);
-
-    if (options.bringToFrontOnAttach()) {
-        WindowManager.bringToFront(hwnd);
-        Thread.sleep(300);
-    }
-
+    // ✅ Create run folder FIRST so any attach failure has a home
     Path outDir = RunOptions.prepareRunFolder(options);
+    Path startupDir = outDir.resolve("01-startup");
+    Files.createDirectories(startupDir);
 
-// Ensure startup dir exists (important)
-Path startupDir = outDir.resolve("01-startup");
-Files.createDirectories(startupDir);
+    try {
+        long timeoutMs = options.attachTimeoutMs();
+        System.out.println("Click the target window to attach (timeout " + (timeoutMs / 1000) + "s)...");
 
-// Write attach diagnostics
-Files.writeString(startupDir.resolve("attach.txt"),
-        "title=" + title + System.lineSeparator() +
-        "clientRectWin32=" + clientRectWin32 + System.lineSeparator() +
-        "clientRectRobot=" + clientRectRobot + System.lineSeparator()
-);
+        HWND hwnd = WindowManager.pickWindowHandleOnClick(timeoutMs);
+        hwnd = WindowManager.toTopLevel(hwnd);
 
-Artifacts artifacts = new Artifacts(outDir);
-DesktopDriver driver = new DesktopDriver();
+        String title = WindowManager.getWindowTitle(hwnd);
+        Rectangle clientRectWin32 = WindowManager.getClientRectOnScreenOrThrow(hwnd);
+        Rectangle clientRectRobot = RobotCoords.toRobotRect(clientRectWin32);
 
-DeskPilotSession s = new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts, options);
+        System.out.println("Selected window: " + title);
+        System.out.println("Client rect (win32): " + clientRectWin32);
 
-// ✅ make attach stabilization step-scoped
-s.step("startup", () -> {
-    s.before();                 // gives you a baseline screenshot in 01-startup
-    s.stabilizeInStep("attach");
-});
+        if (options.bringToFrontOnAttach()) {
+            WindowManager.bringToFront(hwnd);
+            Thread.sleep(300);
+        }
 
-return s;
+        // ✅ Write attach diagnostics into startup (always exists now)
+        Files.writeString(
+                startupDir.resolve("attach.txt"),
+                "title=" + title + System.lineSeparator() +
+                "clientRectWin32=" + clientRectWin32 + System.lineSeparator() +
+                "clientRectRobot=" + clientRectRobot + System.lineSeparator()
+        );
+
+        Artifacts artifacts = new Artifacts(outDir);
+        DesktopDriver driver = new DesktopDriver();
+
+        DeskPilotSession s = new DeskPilotSession(driver, hwnd, clientRectWin32, clientRectRobot, artifacts, options);
+
+        // ✅ Make attach stabilization step-scoped
+        s.step("startup", () -> {
+            s.before();                 // baseline screenshot in 01-startup
+            s.stabilizeInStep("attach");
+        });
+
+        return s;
+
+    } catch (Exception e) {
+        // ✅ PRD: attach failures always leave a failure bundle in 01-startup
+        try {
+            Files.writeString(startupDir.resolve("attach_error.txt"), stackTrace(e));
+        } catch (Exception ignored) {}
+        throw e;
+    }
 }
 
-
+private static String stackTrace(Throwable t) {
+    java.io.StringWriter sw = new java.io.StringWriter();
+    java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+    t.printStackTrace(pw);
+    pw.flush();
+    return sw.toString();
+}
 
 
     public Actions actions() {

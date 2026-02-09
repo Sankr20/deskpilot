@@ -8,28 +8,29 @@ import io.deskpilot.recorder.TestClassGenerator;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Properties;
 
 public final class RecorderCLI {
 
-    private enum Framework {
-        JUNIT5, TESTNG
-    }
+    private enum Framework { JUNIT5, TESTNG }
 
     public static int recordToFile(String[] args) {
-        Framework framework = Framework.JUNIT5;
-        boolean force = false;
-
-        Path explicitOutFile = null;
-        Path projectDir = null;
-
         if (args == null) args = new String[0];
 
         if (args.length >= 1 && Main.isHelp(args[0])) {
             printUsage();
             return 0;
         }
+
+        Framework framework = null; // null means "not explicitly chosen"
+        boolean force = false;
+
+        Path explicitOutFile = null;
+        Path projectDir = null;
+        String packageName = null;
 
         // ---------------- Parse args ----------------
         for (int i = 0; i < args.length; i++) {
@@ -54,11 +55,9 @@ public final class RecorderCLI {
                     return 2;
                 }
                 String f = args[++i].trim().toLowerCase(Locale.ROOT);
-                if ("junit5".equals(f)) {
-                    framework = Framework.JUNIT5;
-                } else if ("testng".equals(f)) {
-                    framework = Framework.TESTNG;
-                } else {
+                if ("junit5".equals(f)) framework = Framework.JUNIT5;
+                else if ("testng".equals(f)) framework = Framework.TESTNG;
+                else {
                     System.err.println("Unknown framework: " + f + " (use junit5|testng)");
                     return 2;
                 }
@@ -74,11 +73,59 @@ public final class RecorderCLI {
                 continue;
             }
 
+            if ("--package".equalsIgnoreCase(a)) {
+                if (i + 1 >= args.length) {
+                    System.err.println("Missing value after --package");
+                    return 2;
+                }
+                packageName = args[++i].trim();
+                if (packageName.isEmpty()) {
+                    System.err.println("Package cannot be empty.");
+                    return 2;
+                }
+                try {
+                    SafePaths.validateJavaPackageOrThrow(packageName);
+                } catch (Exception e) {
+                    System.err.println("Invalid package: " + e.getMessage());
+                    return 2;
+                }
+                continue;
+            }
+
             // First non-flag token = output file (optional)
             if (!a.startsWith("--") && explicitOutFile == null) {
                 explicitOutFile = Path.of(a);
             }
         }
+
+        // ---------------- Load defaults from deskpilot.properties ----------------
+        Path propsDir = (projectDir != null) ? projectDir : Path.of(".");
+        Properties props = loadDeskpilotProps(propsDir);
+
+        if (framework == null && props != null) {
+            String fw = prop(props, "deskpilot.framework");
+            if (fw != null) {
+                fw = fw.toLowerCase(Locale.ROOT);
+                if ("testng".equals(fw)) framework = Framework.TESTNG;
+                if ("junit5".equals(fw)) framework = Framework.JUNIT5;
+            }
+        }
+
+        if ((packageName == null || packageName.isBlank()) && props != null) {
+            String p = prop(props, "deskpilot.package");
+            if (p != null && !p.isBlank()) {
+                packageName = p.trim();
+            }
+        }
+
+        // Final defaults
+        if (framework == null) framework = Framework.JUNIT5;
+        if (packageName == null || packageName.isBlank()) packageName = "com.example";
+
+        // Keep generated tests in a clean subpackage
+        String effectivePkg = packageName.endsWith(".generated")
+                ? packageName
+                : (packageName + ".generated");
 
         // ---------------- Safety defaults ----------------
         if (framework == Framework.TESTNG && explicitOutFile == null && projectDir == null) {
@@ -90,17 +137,14 @@ public final class RecorderCLI {
         }
 
         // ---------------- Guardrails (pre-flight) ----------------
-        Path root = null;
         if (projectDir != null) {
             try {
-                root = SafePaths.root(projectDir);
+                Path root = SafePaths.root(projectDir);
                 SafePaths.ensureDir(root);
 
-                // Guardrail: refuse to write into an existing non-empty src/test/java unless --force
-                // (applies when using --projectDir output mode)
+                // We do NOT require src/test/java to be empty; this must work for real projects.
                 Path testJava = SafePaths.under(root, "src", "test", "java");
                 SafePaths.ensureDir(testJava);
-                SafePaths.ensureDirEmptyOrForce(testJava, force);
             } catch (Exception e) {
                 System.err.println("Project directory rejected: " + e.getMessage());
                 return 2;
@@ -108,7 +152,6 @@ public final class RecorderCLI {
         }
 
         if (explicitOutFile != null) {
-            // Guardrail: require .java for explicit output
             String name = explicitOutFile.getFileName() == null ? "" : explicitOutFile.getFileName().toString();
             if (!name.toLowerCase(Locale.ROOT).endsWith(".java")) {
                 System.err.println("Output file must end with .java: " + explicitOutFile);
@@ -196,7 +239,6 @@ public final class RecorderCLI {
                             continue;
                         }
 
-                        // ---- Suggest safer token (helps with OCR dropping last char) ----
                         String suggested = suggestStableExpected(expected);
                         if (!suggested.equals(expected)) {
                             System.out.println("Tip: OCR may drop a character. Suggested safer token: \"" + suggested + "\"");
@@ -260,21 +302,20 @@ public final class RecorderCLI {
                 }
 
                 if (framework == Framework.JUNIT5) {
-                    TestClassGenerator.generateJUnit5("com.example", "RecordedTest", actions, outFile, force);
+                    TestClassGenerator.generateJUnit5(effectivePkg, "RecordedTest", actions, outFile, force);
                 } else {
-                    TestClassGenerator.generateTestNG("com.example", "RecordedTest", actions, outFile, force);
+                    TestClassGenerator.generateTestNG(effectivePkg, "RecordedTest", actions, outFile, force);
                 }
                 written = outFile;
-
             } else {
                 // projectDir mode (generator will create src/test/java/... inside this dir)
                 Path normRoot = SafePaths.root(projectDir);
                 SafePaths.ensureDir(normRoot);
 
                 if (framework == Framework.JUNIT5) {
-                    written = TestClassGenerator.generateJUnit5ToProjectDir("com.example", "", actions, normRoot, force);
+                    written = TestClassGenerator.generateJUnit5ToProjectDir(effectivePkg, "", actions, normRoot, force);
                 } else {
-                    written = TestClassGenerator.generateTestNGToProjectDir("com.example", "", actions, normRoot, force);
+                    written = TestClassGenerator.generateTestNGToProjectDir(effectivePkg, "", actions, normRoot, force);
                 }
             }
 
@@ -312,6 +353,7 @@ public final class RecorderCLI {
                         "Options:\n" +
                         "  --framework junit5|testng\n" +
                         "  --projectDir <dir>\n" +
+                        "  --package <javaPackage>\n" +
                         "  --force\n" +
                         "  --help\n"
         );
@@ -339,6 +381,26 @@ public final class RecorderCLI {
 
     private static boolean isDeskPilotRepoWrite(Path explicitOutFile, Path projectDir) {
         return isInsideDeskPilotRepoEngine(explicitOutFile) || isInsideDeskPilotRepoEngine(projectDir);
+    }
+
+    private static Properties loadDeskpilotProps(Path dir) {
+        try {
+            Path p = dir.resolve("deskpilot.properties");
+            if (!Files.exists(p)) return null;
+            Properties props = new Properties();
+            try (var in = Files.newInputStream(p)) {
+                props.load(in);
+            }
+            return props;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String prop(Properties props, String key) {
+        if (props == null) return null;
+        String v = props.getProperty(key);
+        return (v == null) ? null : v.trim();
     }
 
     private RecorderCLI() {}

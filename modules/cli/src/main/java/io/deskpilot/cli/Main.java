@@ -41,30 +41,33 @@ public final class Main {
         String cmd = lower(args[0]);
 
         return switch (cmd) {
-            case "doctor" -> {
-                doctor();
-                yield 0;
-            }
+    case "doctor" -> {
+        doctor();
+        yield 0;
+    }
+    case "init" -> {
+        yield new InitCommand().run(slice(args));
+    }
+    case "record" -> {
+        yield RecorderCLI.recordToFile(slice(args));
+    }
+    case "run" -> {
+        yield runTest(slice(args));
+    }
+    case "smoke" -> {
+        yield smoke(slice(args));
+    }
+    default -> {
+        System.err.println("Unknown command: " + args[0]);
+        System.err.println("Run: deskpilot --help");
+        System.err.println();
+        printGlobalHelp();
+        yield 2;
+    }
+};
 
-            case "init" -> {
-                new InitCommand().run(slice(args));
-                yield 0;
-            }
 
-            case "record" -> RecorderCLI.recordToFile(slice(args));
 
-            case "run" -> runTest(slice(args));
-
-            case "smoke" -> smoke(slice(args));
-
-            default -> {
-                System.err.println("Unknown command: " + args[0]);
-                System.err.println("Run: deskpilot --help");
-                System.err.println();
-                printGlobalHelp();
-                yield 2;
-            }
-        };
     }
 
     // ---------- commands ----------

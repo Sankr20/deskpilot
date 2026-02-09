@@ -22,6 +22,7 @@ public abstract class BaseDeskPilotTestTestNG {
 
     private DeskPilotSession session;
     private Actions actions;
+    private Path runFolder;
 
     protected RunOptions.Builder runOptions() {
         return RunOptions.builder();
@@ -33,32 +34,23 @@ public abstract class BaseDeskPilotTestTestNG {
 
     @BeforeMethod(alwaysRun = true)
     final void deskpilot_beforeMethod(ITestResult result) throws Exception {
-        String className = result.getTestClass() != null ? result.getTestClass().getRealClass().getSimpleName() : "Test";
-        String methodName = result.getMethod() != null ? result.getMethod().getMethodName() : "unknown";
+        String className = result.getTestClass() != null
+                ? result.getTestClass().getRealClass().getSimpleName()
+                : "Test";
+        String methodName = result.getMethod() != null
+                ? result.getMethod().getMethodName()
+                : "unknown";
         String runName = className + "/" + methodName;
 
         RunOptions opts = runOptions()
                 .runsDir(runsDir())
                 .runName(runName)
                 .build();
-java.nio.file.Path runFolder = RunOptions.prepareRunFolder(opts);
 
-try {
-    this.session = DeskPilot.attachPickWindow(opts);
-    this.actions = new Actions(session);
-} catch (Exception e) {
-    // Write attach failure diagnostics into startup folder
-    java.nio.file.Path startup = runFolder.resolve("01-startup");
-    try {
-        java.nio.file.Files.writeString(
-                startup.resolve("attach_error.txt"),
-                String.valueOf(e),
-                java.nio.charset.StandardCharsets.UTF_8
-        );
-    } catch (Exception ignored) {}
-    throw e;
-}}
-
+        this.session = DeskPilot.attachPickWindow(opts);
+        this.actions = new Actions(session);
+        this.runFolder = opts.runDir();
+    }
 
     @AfterMethod(alwaysRun = true)
     final void deskpilot_afterMethod() {
@@ -67,6 +59,7 @@ try {
         }
         session = null;
         actions = null;
+        runFolder = null;
     }
 
     protected final DeskPilotSession session() {
@@ -77,5 +70,9 @@ try {
     protected final Actions actions() {
         if (actions == null) throw new IllegalStateException("actions is null (not attached)");
         return actions;
+    }
+
+    Path _deskpilotRunFolder() {
+        return runFolder;
     }
 }
