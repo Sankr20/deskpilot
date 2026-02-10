@@ -1,6 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
 
@@ -8,116 +9,122 @@
   <artifactId>deskpilot</artifactId>
   <version>0.1.2</version>
   <packaging>pom</packaging>
+  <name>deskpilot</name>
 
   <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <log4j.version>2.24.3</log4j.version>
+    <jna.version>5.14.0</jna.version>
+    <junit.bom.version>5.10.3</junit.bom.version>
+
+    <surefire.version>3.2.5</surefire.version>
+    <buildnumber.plugin.version>3.2.0</buildnumber.plugin.version>
   </properties>
 
   <scm>
-  <connection>scm:git:https://github.com/Sankr20/deskpilot.git</connection>
-  <developerConnection>scm:git:ssh://git@github.com/Sankr20/deskpilot.git</developerConnection>
-  <url>https://github.com/Sankr20/deskpilot</url>
-  <tag>HEAD</tag>
-</scm>
+    <connection>scm:git:https://github.com/Sankr20/deskpilot.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Sankr20/deskpilot.git</developerConnection>
+    <url>https://github.com/Sankr20/deskpilot</url>
+    <tag>HEAD</tag>
+  </scm>
 
-
+  <!-- MUST match repo folder structure -->
   <modules>
-    <module>modules/testkit</module>
-    <module>modules/engine</module>
-    <module>modules/demo-app</module>
     <module>modules/cli</module>
-    <module>modules/recorder</module>
+    <module>modules/common</module>
+    <module>modules/demo-app</module>
     <module>modules/deskpilot</module>
     <module>modules/deskpilot-testkit</module>
-    <module>modules/common</module>
+    <module>modules/engine</module>
+    <module>modules/recorder</module>
+    <module>modules/testkit</module>
   </modules>
 
   <dependencyManagement>
     <dependencies>
+      <!-- JUnit BOM -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.bom.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- JNA -->
+      <dependency>
+        <groupId>net.java.dev.jna</groupId>
+        <artifactId>jna</artifactId>
+        <version>${jna.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>net.java.dev.jna</groupId>
+        <artifactId>jna-platform</artifactId>
+        <version>${jna.version}</version>
+      </dependency>
+
+      <!-- Log4j -->
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>
         <artifactId>log4j-api</artifactId>
         <version>${log4j.version}</version>
       </dependency>
-
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>
         <artifactId>log4j-core</artifactId>
         <version>${log4j.version}</version>
       </dependency>
-
-      <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>5.10.3</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-
-      <dependency>
-        <groupId>net.java.dev.jna</groupId>
-        <artifactId>jna</artifactId>
-        <version>5.14.0</version>
-      </dependency>
-
-      <dependency>
-        <groupId>net.java.dev.jna</groupId>
-        <artifactId>jna-platform</artifactId>
-        <version>5.14.0</version>
-      </dependency>
     </dependencies>
   </dependencyManagement>
 
-  <!-- IMPORTANT:
-       Put Surefire config in pluginManagement so it DOES NOT apply to every module.
-       Only modules that explicitly declare surefire will inherit this config.
-  -->
   <build>
+
+    <!-- Apply to ALL modules (this is what fixes the reactor -Dtest issue reliably) -->
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <!-- KEY: prevents other modules from failing when -Dtest=... matches only in one module -->
+          <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+          <!-- safer on JDK 17 with mixed classpath setups -->
+          <useModulePath>false</useModulePath>
+        </configuration>
+      </plugin>
+    </plugins>
+
     <pluginManagement>
       <plugins>
+        <!-- Compiler pinned -->
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.2.5</version>
+          <artifactId>maven-compiler-plugin</artifactId>
           <configuration>
-            <excludes>
-              <!-- Exclude all generated recorded tests by package folder -->
-              <exclude>**/io/deskpilot/tests/generated/**</exclude>
-
-              <!-- Extra safety: exclude by your recorded test naming pattern -->
-              <exclude>**/RecordedTest_*Test.java</exclude>
-            </excludes>
+            <release>${maven.compiler.release}</release>
           </configuration>
         </plugin>
 
-        <!-- ✅ SAFE buildnumber defaults (won’t fail if SCM is missing) -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>buildnumber-maven-plugin</artifactId>
-        <version>3.2.0</version>
-        <configuration>
-          <doCheck>false</doCheck>
-          <doUpdate>false</doUpdate>
-
-          <!-- KEY: don’t fail build if SCM can’t be read -->
-          <failOnError>false</failOnError>
-
-          <!-- fallback value if SCM is unavailable -->
-          <revisionOnScmFailure>dev</revisionOnScmFailure>
-
-          <!-- makes it use git when available -->
-          <providerImplementations>
-            <git>jgit</git>
-          </providerImplementations>
-        </configuration>
-      </plugin>
-
+        <!-- Buildnumber: never fail build if SCM info missing -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>buildnumber-maven-plugin</artifactId>
+          <version>${buildnumber.plugin.version}</version>
+          <configuration>
+            <doCheck>false</doCheck>
+            <doUpdate>false</doUpdate>
+            <failOnError>false</failOnError>
+            <revisionOnScmFailure>dev</revisionOnScmFailure>
+            <providerImplementations>
+              <git>jgit</git>
+            </providerImplementations>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
+
   </build>
 
 </project>

@@ -16,6 +16,9 @@ public final class RecorderManager {
     private int clickCount = 0;
     private int fillCount = 0;
     private int waitCount = 0;
+    private int hotkeyCount = 0;
+    private int pressCount = 0;
+    private int typeTextCount = 0;
 
     public RecorderManager(DeskPilotSession session) {
         this.session = Objects.requireNonNull(session, "session is null");
@@ -41,13 +44,35 @@ public final class RecorderManager {
         waitCount++;
     }
 
+    public void recordHotkey(String chord) {
+        Objects.requireNonNull(chord, "chord is null");
+        actions.add(new RecordedAction.Hotkey(chord));
+        hotkeyCount++;
+    }
+
+    public void recordPress(String key) {
+        Objects.requireNonNull(key, "key is null");
+        actions.add(new RecordedAction.Press(key));
+        pressCount++;
+    }
+
+    public void recordTypeText(String text) {
+        Objects.requireNonNull(text, "text is null");
+        actions.add(new RecordedAction.TypeText(text));
+        typeTextCount++;
+    }
+
     public List<RecordedAction> getActions() {
         return List.copyOf(actions);
     }
 
     public String summary() {
         return "actions=" + actions.size() +
-                " (fill=" + fillCount + ", click=" + clickCount + ", wait=" + waitCount + ")";
+                " (fill=" + fillCount +
+                ", click=" + clickCount +
+                ", wait=" + waitCount +
+                ", hotkey=" + hotkeyCount +
+                ", press=" + pressCount +
+                ", typeText=" + typeTextCount + ")";
     }
-
 }

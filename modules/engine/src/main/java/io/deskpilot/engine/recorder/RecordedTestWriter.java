@@ -30,54 +30,56 @@ public final class RecordedTestWriter {
     private RecordedTestWriter() {
     }
 
-   public static Path writeTest(
-        String className,
-        String testMethodName,
-        String pickWindowLabel,
-        List<RecordedStep> steps) throws IOException {
+    public static Path writeTest(
+            String className,
+            String testMethodName,
+            String pickWindowLabel,
+            List<RecordedStep> steps) throws IOException {
 
-    // Backward-compatible default: do NOT overwrite.
-    return writeTest(className, testMethodName, pickWindowLabel, steps, false);
-}
-
-public static Path writeTest(
-        String className,
-        String testMethodName,
-        String pickWindowLabel,
-        List<RecordedStep> steps,
-        boolean force) throws IOException {
-
-    if (className == null || className.isBlank())
-        throw new IllegalArgumentException("className is blank");
-    if (testMethodName == null || testMethodName.isBlank())
-        throw new IllegalArgumentException("testMethodName is blank");
-    if (pickWindowLabel == null || pickWindowLabel.isBlank())
-        throw new IllegalArgumentException("pickWindowLabel is blank");
-
-    Objects.requireNonNull(steps, "steps is null");
-
-    boolean anyReal = steps.stream().anyMatch(s ->
-            s instanceof RecordedStep.Click
-                    || s instanceof RecordedStep.Fill
-                    || s instanceof RecordedStep.WaitForFound
-    );
-
-    if (!anyReal) {
-        throw new IllegalArgumentException("Refusing to write empty recording (no Click/Fill/Wait steps).");
+        // Backward-compatible default: do NOT overwrite.
+        return writeTest(className, testMethodName, pickWindowLabel, steps, false);
     }
 
-    // Use absolute+normalized path to avoid surprises while still writing to the same location.
-    Path genDir = GENERATED_TEST_DIR.toAbsolutePath().normalize();
-    Files.createDirectories(genDir);
+    public static Path writeTest(
+            String className,
+            String testMethodName,
+            String pickWindowLabel,
+            List<RecordedStep> steps,
+            boolean force) throws IOException {
 
-    String src = render(className, testMethodName, pickWindowLabel, steps);
+        if (className == null || className.isBlank())
+            throw new IllegalArgumentException("className is blank");
+        if (testMethodName == null || testMethodName.isBlank())
+            throw new IllegalArgumentException("testMethodName is blank");
+        if (pickWindowLabel == null || pickWindowLabel.isBlank())
+            throw new IllegalArgumentException("pickWindowLabel is blank");
 
-    Path out = genDir.resolve(className + ".java").toAbsolutePath().normalize();
+        Objects.requireNonNull(steps, "steps is null");
 
-    writeFile(out, src, force);
+        boolean anyReal = steps.stream().anyMatch(s -> s instanceof RecordedStep.Click
+                || s instanceof RecordedStep.Fill
+                || s instanceof RecordedStep.WaitForFound
+                || s instanceof RecordedStep.Hotkey
+                || s instanceof RecordedStep.Press
+                || s instanceof RecordedStep.Type);
 
-    return out;
-}
+        if (!anyReal) {
+            throw new IllegalArgumentException("Refusing to write empty recording (no Click/Fill/Wait steps).");
+        }
+
+        // Use absolute+normalized path to avoid surprises while still writing to the
+        // same location.
+        Path genDir = GENERATED_TEST_DIR.toAbsolutePath().normalize();
+        Files.createDirectories(genDir);
+
+        String src = render(className, testMethodName, pickWindowLabel, steps);
+
+        Path out = genDir.resolve(className + ".java").toAbsolutePath().normalize();
+
+        writeFile(out, src, force);
+
+        return out;
+    }
 
     public static String defaultClassName() {
         // ✅ ends with Test so surefire runs it by default patterns
@@ -215,6 +217,18 @@ public static Path writeTest(
             return renderWaitLine(s);
         }
 
+        if (step instanceof RecordedStep.Hotkey s) {
+            return "            a.hotkey(\"" + escapeJava(s.chord()) + "\");\n";
+        }
+
+        if (step instanceof RecordedStep.Press s) {
+            return "            a.press(\"" + escapeJava(s.key()) + "\");\n";
+        }
+
+        if (step instanceof RecordedStep.Type s) {
+            return "            a.typeText(\"" + escapeJava(s.text()) + "\");\n";
+        }
+
         return "            // (unknown step type: " + step.getClass().getName() + ")\n";
     }
 
@@ -234,19 +248,18 @@ public static Path writeTest(
     }
 
     private static void writeFile(Path out, String src, boolean force) throws IOException {
-    Files.createDirectories(out.getParent());
+        Files.createDirectories(out.getParent());
 
-    if (force) {
-        Files.writeString(out, src, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE);
-    } else {
-        Files.writeString(out, src, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE);
+        if (force) {
+            Files.writeString(out, src, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+        } else {
+            Files.writeString(out, src, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE);
+        }
     }
-}
-
 
 }

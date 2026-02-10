@@ -1,7 +1,7 @@
 package io.deskpilot.cli;
 
 import io.deskpilot.common.SafePaths;
-import io.deskpilot.engine.DeskPilot;
+import io.deskpilot.engine.DeskPilotSession;
 import io.deskpilot.engine.RunOptions;
 import io.deskpilot.recorder.RecorderManager;
 import io.deskpilot.recorder.TestClassGenerator;
@@ -25,29 +25,22 @@ public final class RecorderCLI {
             return 0;
         }
 
-        Framework framework = null; // null means "not explicitly chosen"
+        Framework framework = null;
         boolean force = false;
 
         Path explicitOutFile = null;
         Path projectDir = null;
         String packageName = null;
 
-        // ---------------- Parse args ----------------
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a == null) continue;
             a = a.trim();
             if (a.isEmpty()) continue;
 
-            if (Main.isHelp(a)) {
-                printUsage();
-                return 0;
-            }
+            if (Main.isHelp(a)) { printUsage(); return 0; }
 
-            if ("--force".equalsIgnoreCase(a)) {
-                force = true;
-                continue;
-            }
+            if ("--force".equalsIgnoreCase(a)) { force = true; continue; }
 
             if ("--framework".equalsIgnoreCase(a)) {
                 if (i + 1 >= args.length) {
@@ -92,13 +85,11 @@ public final class RecorderCLI {
                 continue;
             }
 
-            // First non-flag token = output file (optional)
             if (!a.startsWith("--") && explicitOutFile == null) {
                 explicitOutFile = Path.of(a);
             }
         }
 
-        // ---------------- Load defaults from deskpilot.properties ----------------
         Path propsDir = (projectDir != null) ? projectDir : Path.of(".");
         Properties props = loadDeskpilotProps(propsDir);
 
@@ -113,21 +104,16 @@ public final class RecorderCLI {
 
         if ((packageName == null || packageName.isBlank()) && props != null) {
             String p = prop(props, "deskpilot.package");
-            if (p != null && !p.isBlank()) {
-                packageName = p.trim();
-            }
+            if (p != null && !p.isBlank()) packageName = p.trim();
         }
 
-        // Final defaults
         if (framework == null) framework = Framework.JUNIT5;
         if (packageName == null || packageName.isBlank()) packageName = "com.example";
 
-        // Keep generated tests in a clean subpackage
         String effectivePkg = packageName.endsWith(".generated")
                 ? packageName
                 : (packageName + ".generated");
 
-        // ---------------- Safety defaults ----------------
         if (framework == Framework.TESTNG && explicitOutFile == null && projectDir == null) {
             System.err.println("Usage:\n" +
                     "  deskpilot record --framework testng <outputFile>\n" +
@@ -136,13 +122,10 @@ public final class RecorderCLI {
             return 2;
         }
 
-        // ---------------- Guardrails (pre-flight) ----------------
         if (projectDir != null) {
             try {
                 Path root = SafePaths.root(projectDir);
                 SafePaths.ensureDir(root);
-
-                // We do NOT require src/test/java to be empty; this must work for real projects.
                 Path testJava = SafePaths.under(root, "src", "test", "java");
                 SafePaths.ensureDir(testJava);
             } catch (Exception e) {
@@ -163,14 +146,13 @@ public final class RecorderCLI {
                 .runName("record-" + System.currentTimeMillis())
                 .build();
 
-        try (var session = DeskPilot.attachPickWindow(opts)) {
+        try (DeskPilotSession session = DeskPilotSession.attachPickWindow(opts)) {
 
             RecorderManager recorder = new RecorderManager(session);
             BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 
             printHelp();
 
-            // ---------------- Record loop ----------------
             while (true) {
                 System.out.print("> ");
                 String cmd = br.readLine();
@@ -239,16 +221,6 @@ public final class RecorderCLI {
                             continue;
                         }
 
-                        String suggested = suggestStableExpected(expected);
-                        if (!suggested.equals(expected)) {
-                            System.out.println("Tip: OCR may drop a character. Suggested safer token: \"" + suggested + "\"");
-                            System.out.print("Press ENTER to use suggested, or type override: ");
-                            String override = br.readLine();
-                            if (override == null) override = "";
-                            override = override.trim();
-                            expected = override.isEmpty() ? suggested : override;
-                        }
-
                         recorder.recordWaitText(region, expected);
                         System.out.println("Recorded: WAIT " + region + " contains \"" + expected + "\"");
                     } catch (IllegalStateException cancel) {
@@ -259,7 +231,44 @@ public final class RecorderCLI {
                     continue;
                 }
 
-                System.out.println("Unknown command. Use C, F, W, HELP, or ENTER.");
+                if (cmd.equalsIgnoreCase("K")) {
+                    System.out.print("Hotkey (e.g., CTRL+V, ALT+F4): ");
+                    String chord = br.readLine();
+                    if (chord == null) chord = "";
+                    chord = chord.trim();
+                    if (chord.isEmpty()) {
+                        System.out.println("[ERROR] Hotkey cannot be empty.");
+                        continue;
+                    }
+                    recorder.recordHotkey(chord);
+                    System.out.println("Recorded: HOTKEY " + chord);
+                    continue;
+                }
+
+                if (cmd.equalsIgnoreCase("P")) {
+                    System.out.print("Key (e.g., ENTER, TAB, ESC, UP): ");
+                    String key = br.readLine();
+                    if (key == null) key = "";
+                    key = key.trim();
+                    if (key.isEmpty()) {
+                        System.out.println("[ERROR] Key cannot be empty.");
+                        continue;
+                    }
+                    recorder.recordPress(key);
+                    System.out.println("Recorded: PRESS " + key);
+                    continue;
+                }
+
+                if (cmd.equalsIgnoreCase("T")) {
+                    System.out.print("Text to type: ");
+                    String text = br.readLine();
+                    if (text == null) text = "";
+                    recorder.recordTypeText(text);
+                    System.out.println("Recorded: TYPE \"" + text + "\"");
+                    continue;
+                }
+
+                System.out.println("Unknown command. Use C, F, W, K, P, T, HELP, or ENTER.");
             }
 
             var actions = recorder.getActions();
@@ -279,7 +288,6 @@ public final class RecorderCLI {
                 return 2;
             }
 
-            // ---------------- Write output ----------------
             Path written;
 
             boolean repoWrite = (explicitOutFile == null && projectDir == null)
@@ -295,7 +303,6 @@ public final class RecorderCLI {
                 Path outFile = explicitOutFile.toAbsolutePath().normalize();
                 SafePaths.rejectReservedWindowsName(outFile.getFileName().toString());
 
-                // Guardrail: if projectDir is provided, outFile must be inside it
                 if (projectDir != null) {
                     Path normRoot = SafePaths.root(projectDir);
                     SafePaths.requireUnderRoot(normRoot, outFile);
@@ -308,7 +315,6 @@ public final class RecorderCLI {
                 }
                 written = outFile;
             } else {
-                // projectDir mode (generator will create src/test/java/... inside this dir)
                 Path normRoot = SafePaths.root(projectDir);
                 SafePaths.ensureDir(normRoot);
 
@@ -327,19 +333,6 @@ public final class RecorderCLI {
             t.printStackTrace(System.err);
             return 1;
         }
-    }
-
-    private static String suggestStableExpected(String expected) {
-        String e = expected.trim();
-        if (e.length() <= 4) return e;
-
-        int n = Math.min(6, e.length());
-        String prefix = e.substring(0, n);
-
-        if (e.length() >= 7 || e.endsWith("ed")) {
-            return prefix;
-        }
-        return e;
     }
 
     private static void printUsage() {
@@ -363,10 +356,13 @@ public final class RecorderCLI {
         System.out.println();
         System.out.println("Recorder ready.");
         System.out.println("Commands:");
-        System.out.println("  C     = capture CLICK region");
-        System.out.println("  F     = capture FILL region + value");
-        System.out.println("  W     = capture WAIT region + expected OCR text");
-        System.out.println("  HELP  = show commands");
+        System.out.println("  C       = capture CLICK region");
+        System.out.println("  F       = capture FILL region + value");
+        System.out.println("  W       = capture WAIT region + expected OCR text");
+        System.out.println("  K       = capture HOTKEY (e.g., CTRL+V)");
+        System.out.println("  P       = capture PRESS (e.g., ENTER/TAB)");
+        System.out.println("  T       = capture TYPE text (no locator)");
+        System.out.println("  HELP    = show commands");
         System.out.println("  S/STOP  = stop recording");
         System.out.println("  Q/QUIT  = quit without writing");
         System.out.println("  ENTER   = stop recording");

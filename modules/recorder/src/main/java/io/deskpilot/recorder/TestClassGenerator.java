@@ -21,7 +21,8 @@ public final class TestClassGenerator {
         generateJUnit5(pkg, className, actions, output, false);
     }
 
-    public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
+    public static void generateJUnit5(String pkg, String className, List<RecordedAction> actions, Path output,
+            boolean force)
             throws Exception {
         requireNonEmpty(actions);
         SafePaths.validateJavaPackageOrThrow(pkg);
@@ -31,12 +32,14 @@ public final class TestClassGenerator {
         SafePaths.writeString(output.toAbsolutePath().normalize(), src, force);
     }
 
-    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
+    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions,
+            Path projectDir)
             throws Exception {
         return generateJUnit5ToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
     }
 
-    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
+    public static Path generateJUnit5ToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions,
+            Path projectDir, boolean force)
             throws Exception {
         requireNonEmpty(actions);
         SafePaths.validateJavaPackageOrThrow(pkg);
@@ -54,7 +57,8 @@ public final class TestClassGenerator {
 
     /**
      * Repo convenience: write into modules/engine generated folder.
-     * IMPORTANT: engine module must not depend on testkit, so this is standalone JUnit.
+     * IMPORTANT: engine module must not depend on testkit, so this is standalone
+     * JUnit.
      */
     public static Path generateIntoRepoEngineGenerated(List<RecordedAction> actions) throws Exception {
         return generateIntoRepoEngineGenerated(actions, false);
@@ -92,7 +96,8 @@ public final class TestClassGenerator {
         generateTestNG(pkg, className, actions, output, false);
     }
 
-    public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output, boolean force)
+    public static void generateTestNG(String pkg, String className, List<RecordedAction> actions, Path output,
+            boolean force)
             throws Exception {
         requireNonEmpty(actions);
         SafePaths.validateJavaPackageOrThrow(pkg);
@@ -102,12 +107,14 @@ public final class TestClassGenerator {
         SafePaths.writeString(output.toAbsolutePath().normalize(), src, force);
     }
 
-    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir)
+    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions,
+            Path projectDir)
             throws Exception {
         return generateTestNGToProjectDir(pkg, classNameOrBlank, actions, projectDir, false);
     }
 
-    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions, Path projectDir, boolean force)
+    public static Path generateTestNGToProjectDir(String pkg, String classNameOrBlank, List<RecordedAction> actions,
+            Path projectDir, boolean force)
             throws Exception {
         requireNonEmpty(actions);
         SafePaths.validateJavaPackageOrThrow(pkg);
@@ -205,11 +212,11 @@ public final class TestClassGenerator {
     // ---------------- Emitters ----------------
 
     private static void emitActionsForProject(StringBuilder sb, List<RecordedAction> actions) {
-        emitActions(sb, actions, /*standalone*/ false);
+        emitActions(sb, actions, /* standalone */ false);
     }
 
     private static void emitActionsForEngineStandalone(StringBuilder sb, List<RecordedAction> actions) {
-        emitActions(sb, actions, /*standalone*/ true);
+        emitActions(sb, actions, /* standalone */ true);
     }
 
     private static void emitActions(StringBuilder sb, List<RecordedAction> actions, boolean standalone) {
@@ -257,6 +264,30 @@ public final class TestClassGenerator {
                 waitIndex++;
                 step++;
             }
+            if (ra instanceof RecordedAction.Hotkey hk) {
+                sb.append("      ").append(receiver).append(".hotkey(")
+                        .append(javaString(hk.chord()))
+                        .append(");\n\n");
+                step++;
+                continue;
+            }
+
+            if (ra instanceof RecordedAction.Press p) {
+                sb.append("      ").append(receiver).append(".press(")
+                        .append(javaString(p.key()))
+                        .append(");\n\n");
+                step++;
+                continue;
+            }
+
+            if (ra instanceof RecordedAction.TypeText tt) {
+                sb.append("      ").append(receiver).append(".typeText(")
+                        .append(javaString(tt.text()))
+                        .append(");\n\n");
+                step++;
+                continue;
+            }
+
         }
     }
 
@@ -277,27 +308,14 @@ public final class TestClassGenerator {
     // ---------------- Ordering ----------------
 
     private static List<RecordedAction> orderActions(List<RecordedAction> actions) {
-        // Safe heuristic:
-        // - Keep clicks/fills in original order
-        // - Move waits to the end (preserve relative order of waits)
-        List<RecordedAction> nonWait = new ArrayList<>();
-        List<RecordedAction> waits = new ArrayList<>();
-
-        for (RecordedAction a : actions) {
-            if (a instanceof RecordedAction.WaitText) waits.add(a);
-            else nonWait.add(a);
-        }
-
-        List<RecordedAction> out = new ArrayList<>(actions.size());
-        out.addAll(nonWait);
-        out.addAll(waits);
-        return out;
+        return new ArrayList<>(actions);
     }
 
     // ---------------- Utils ----------------
 
     private static void requireJavaFile(Path file) {
-        if (file == null) throw new IllegalArgumentException("output file is null");
+        if (file == null)
+            throw new IllegalArgumentException("output file is null");
         Path abs = file.toAbsolutePath().normalize();
         String name = abs.getFileName() == null ? "" : abs.getFileName().toString();
         SafePaths.rejectReservedWindowsName(name);
@@ -315,7 +333,8 @@ public final class TestClassGenerator {
     }
 
     private static String javaString(String s) {
-        if (s == null) s = "";
+        if (s == null)
+            s = "";
         return "\"" + s
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -331,5 +350,6 @@ public final class TestClassGenerator {
         }
     }
 
-    private TestClassGenerator() {}
+    private TestClassGenerator() {
+    }
 }

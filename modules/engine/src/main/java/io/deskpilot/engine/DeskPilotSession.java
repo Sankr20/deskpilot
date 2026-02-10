@@ -1200,6 +1200,126 @@ public void stabilizeAttempt() {
     }
 }
 
+// -------------------------
+// Keyboard helpers (explicit, no keylogging)
+// -------------------------
+
+private java.awt.Robot keyRobot;
+
+private java.awt.Robot keyRobot() throws Exception {
+    if (keyRobot != null) return keyRobot;
+    try {
+        keyRobot = new java.awt.Robot();
+        keyRobot.setAutoDelay(20);
+        return keyRobot;
+    } catch (Exception e) {
+        throw new RuntimeException("Failed to create Robot for keyboard actions: " + e.getMessage(), e);
+    }
+}
+
+/** Press a single key like ENTER / TAB / ESC / UP / DOWN / F4 / A / 1 */
+public DeskPilotSession press(String key) throws Exception {
+    int vk = KeySpec.toVk(key);
+    java.awt.Robot r = keyRobot();
+    r.keyPress(vk);
+    r.keyRelease(vk);
+    driver.delay(80);
+    return this;
+}
+
+/** Press a chord like CTRL+V / ALT+F4 / SHIFT+TAB / CTRL+SHIFT+S */
+public DeskPilotSession hotkey(String chord) throws Exception {
+    int[] vks = KeySpec.parseChord(chord);
+    java.awt.Robot r = keyRobot();
+
+    // press modifiers first, then main key, release reverse
+    for (int i = 0; i < vks.length; i++) r.keyPress(vks[i]);
+    for (int i = vks.length - 1; i >= 0; i--) r.keyRelease(vks[i]);
+
+    driver.delay(100);
+    return this;
+}
+
+/**
+ * Minimal key parsing:
+ * - supports CTRL/ALT/SHIFT/WIN + letters/digits + ENTER/TAB/ESC/BACKSPACE/DELETE/UP/DOWN/LEFT/RIGHT
+ * - supports F1..F12
+ */
+private static final class KeySpec {
+
+    static int[] parseChord(String chord) {
+        if (chord == null) throw new IllegalArgumentException("chord is null");
+        String c = chord.trim();
+        if (c.isEmpty()) throw new IllegalArgumentException("chord is empty");
+
+        String[] parts = c.split("\\+");
+        java.util.List<Integer> keys = new java.util.ArrayList<>();
+        for (String p : parts) {
+            String t = (p == null) ? "" : p.trim();
+            if (!t.isEmpty()) keys.add(toVk(t));
+        }
+        if (keys.isEmpty()) throw new IllegalArgumentException("chord has no keys: " + chord);
+
+        int[] vks = new int[keys.size()];
+        for (int i = 0; i < keys.size(); i++) vks[i] = keys.get(i);
+        return vks;
+    }
+
+    static int toVk(String token) {
+        if (token == null) throw new IllegalArgumentException("key token is null");
+        String t = token.trim().toUpperCase(java.util.Locale.ROOT);
+        if (t.isEmpty()) throw new IllegalArgumentException("key token is empty");
+
+        switch (t) {
+            case "CTRL":
+            case "CONTROL": return java.awt.event.KeyEvent.VK_CONTROL;
+            case "ALT":     return java.awt.event.KeyEvent.VK_ALT;
+            case "SHIFT":   return java.awt.event.KeyEvent.VK_SHIFT;
+            case "WIN":
+            case "WINDOWS": return java.awt.event.KeyEvent.VK_WINDOWS;
+
+            case "ENTER":
+            case "RETURN":  return java.awt.event.KeyEvent.VK_ENTER;
+            case "TAB":     return java.awt.event.KeyEvent.VK_TAB;
+            case "ESC":
+            case "ESCAPE":  return java.awt.event.KeyEvent.VK_ESCAPE;
+
+            case "SPACE":   return java.awt.event.KeyEvent.VK_SPACE;
+            case "BACKSPACE": return java.awt.event.KeyEvent.VK_BACK_SPACE;
+            case "DELETE":
+            case "DEL":     return java.awt.event.KeyEvent.VK_DELETE;
+
+            case "UP":      return java.awt.event.KeyEvent.VK_UP;
+            case "DOWN":    return java.awt.event.KeyEvent.VK_DOWN;
+            case "LEFT":    return java.awt.event.KeyEvent.VK_LEFT;
+            case "RIGHT":   return java.awt.event.KeyEvent.VK_RIGHT;
+
+            case "HOME":    return java.awt.event.KeyEvent.VK_HOME;
+            case "END":     return java.awt.event.KeyEvent.VK_END;
+            case "PGUP":
+            case "PAGEUP":  return java.awt.event.KeyEvent.VK_PAGE_UP;
+            case "PGDN":
+            case "PAGEDOWN":return java.awt.event.KeyEvent.VK_PAGE_DOWN;
+
+            default:
+                // F1..F12
+                if (t.matches("^F\\d{1,2}$")) {
+                    int n = Integer.parseInt(t.substring(1));
+                    if (n >= 1 && n <= 12) return java.awt.event.KeyEvent.VK_F1 + (n - 1);
+                }
+
+                // Single char A-Z / 0-9
+                if (t.length() == 1) {
+                    char ch = t.charAt(0);
+                    if (ch >= 'A' && ch <= 'Z') return java.awt.event.KeyEvent.VK_A + (ch - 'A');
+                    if (ch >= '0' && ch <= '9') return java.awt.event.KeyEvent.VK_0 + (ch - '0');
+                }
+
+                throw new IllegalArgumentException("Unsupported key token: " + token);
+        }
+    }
+}
+
 
 
 }

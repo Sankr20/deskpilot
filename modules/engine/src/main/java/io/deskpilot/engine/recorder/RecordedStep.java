@@ -8,9 +8,31 @@ public sealed interface RecordedStep
 permits RecordedStep.Click,
         RecordedStep.Fill,
         RecordedStep.WaitForFound,
-        RecordedStep.Macro
- {
+        RecordedStep.Hotkey,
+        RecordedStep.Press,
+        RecordedStep.Type,
+        RecordedStep.Macro {
 
+    record Hotkey(String chord) implements RecordedStep {
+        public Hotkey {
+            if (chord == null || chord.isBlank())
+                throw new IllegalArgumentException("chord is blank");
+        }
+    }
+
+    record Press(String key) implements RecordedStep {
+        public Press {
+            if (key == null || key.isBlank())
+                throw new IllegalArgumentException("key is blank");
+        }
+    }
+
+    record Type(String text) implements RecordedStep {
+        public Type {
+            if (text == null)
+                throw new IllegalArgumentException("text is null");
+        }
+    }
     /** Click a locator (must resolve to a point). */
     record Click(String locatorConst) implements RecordedStep {
         public Click {
@@ -51,4 +73,6 @@ record WaitForFound(String ocrLocatorConst, long timeoutMs) implements RecordedS
                 throw new IllegalArgumentException("renderedJavaLine is blank");
         }
     }
+
+    
 }
