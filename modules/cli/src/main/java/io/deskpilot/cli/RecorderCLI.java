@@ -15,10 +15,13 @@ import java.util.Properties;
 
 public final class RecorderCLI {
 
-    private enum Framework { JUNIT5, TESTNG }
+    private enum Framework {
+        JUNIT5, TESTNG
+    }
 
     public static int recordToFile(String[] args) {
-        if (args == null) args = new String[0];
+        if (args == null)
+            args = new String[0];
 
         if (args.length >= 1 && Main.isHelp(args[0])) {
             printUsage();
@@ -34,13 +37,21 @@ public final class RecorderCLI {
 
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
-            if (a == null) continue;
+            if (a == null)
+                continue;
             a = a.trim();
-            if (a.isEmpty()) continue;
+            if (a.isEmpty())
+                continue;
 
-            if (Main.isHelp(a)) { printUsage(); return 0; }
+            if (Main.isHelp(a)) {
+                printUsage();
+                return 0;
+            }
 
-            if ("--force".equalsIgnoreCase(a)) { force = true; continue; }
+            if ("--force".equalsIgnoreCase(a)) {
+                force = true;
+                continue;
+            }
 
             if ("--framework".equalsIgnoreCase(a)) {
                 if (i + 1 >= args.length) {
@@ -48,8 +59,10 @@ public final class RecorderCLI {
                     return 2;
                 }
                 String f = args[++i].trim().toLowerCase(Locale.ROOT);
-                if ("junit5".equals(f)) framework = Framework.JUNIT5;
-                else if ("testng".equals(f)) framework = Framework.TESTNG;
+                if ("junit5".equals(f))
+                    framework = Framework.JUNIT5;
+                else if ("testng".equals(f))
+                    framework = Framework.TESTNG;
                 else {
                     System.err.println("Unknown framework: " + f + " (use junit5|testng)");
                     return 2;
@@ -97,18 +110,23 @@ public final class RecorderCLI {
             String fw = prop(props, "deskpilot.framework");
             if (fw != null) {
                 fw = fw.toLowerCase(Locale.ROOT);
-                if ("testng".equals(fw)) framework = Framework.TESTNG;
-                if ("junit5".equals(fw)) framework = Framework.JUNIT5;
+                if ("testng".equals(fw))
+                    framework = Framework.TESTNG;
+                if ("junit5".equals(fw))
+                    framework = Framework.JUNIT5;
             }
         }
 
         if ((packageName == null || packageName.isBlank()) && props != null) {
             String p = prop(props, "deskpilot.package");
-            if (p != null && !p.isBlank()) packageName = p.trim();
+            if (p != null && !p.isBlank())
+                packageName = p.trim();
         }
 
-        if (framework == null) framework = Framework.JUNIT5;
-        if (packageName == null || packageName.isBlank()) packageName = "com.example";
+        if (framework == null)
+            framework = Framework.JUNIT5;
+        if (packageName == null || packageName.isBlank())
+            packageName = "com.example";
 
         String effectivePkg = packageName.endsWith(".generated")
                 ? packageName
@@ -156,12 +174,15 @@ public final class RecorderCLI {
             while (true) {
                 System.out.print("> ");
                 String cmd = br.readLine();
-                if (cmd == null) break;
+                if (cmd == null)
+                    break;
 
                 cmd = cmd.trim();
-                if (cmd.isEmpty()) break; // ENTER = stop
+                if (cmd.isEmpty())
+                    break; // ENTER = stop
 
-                if (cmd.equalsIgnoreCase("S") || cmd.equalsIgnoreCase("STOP")) break;
+                if (cmd.equalsIgnoreCase("S") || cmd.equalsIgnoreCase("STOP"))
+                    break;
 
                 if (cmd.equalsIgnoreCase("Q") || cmd.equalsIgnoreCase("QUIT")) {
                     System.out.println("Recording cancelled (quit). No test was written.");
@@ -194,7 +215,8 @@ public final class RecorderCLI {
 
                         System.out.print("Value: ");
                         String value = br.readLine();
-                        if (value == null) value = "";
+                        if (value == null)
+                            value = "";
 
                         recorder.recordFill(region, value);
                         System.out.println("Recorded: FILL " + region + " = " + value);
@@ -213,7 +235,8 @@ public final class RecorderCLI {
 
                         System.out.print("Expected text contains: ");
                         String expected = br.readLine();
-                        if (expected == null) expected = "";
+                        if (expected == null)
+                            expected = "";
                         expected = expected.trim();
 
                         if (expected.isEmpty()) {
@@ -234,7 +257,8 @@ public final class RecorderCLI {
                 if (cmd.equalsIgnoreCase("K")) {
                     System.out.print("Hotkey (e.g., CTRL+V, ALT+F4): ");
                     String chord = br.readLine();
-                    if (chord == null) chord = "";
+                    if (chord == null)
+                        chord = "";
                     chord = chord.trim();
                     if (chord.isEmpty()) {
                         System.out.println("[ERROR] Hotkey cannot be empty.");
@@ -248,7 +272,8 @@ public final class RecorderCLI {
                 if (cmd.equalsIgnoreCase("P")) {
                     System.out.print("Key (e.g., ENTER, TAB, ESC, UP): ");
                     String key = br.readLine();
-                    if (key == null) key = "";
+                    if (key == null)
+                        key = "";
                     key = key.trim();
                     if (key.isEmpty()) {
                         System.out.println("[ERROR] Key cannot be empty.");
@@ -262,7 +287,8 @@ public final class RecorderCLI {
                 if (cmd.equalsIgnoreCase("T")) {
                     System.out.print("Text to type: ");
                     String text = br.readLine();
-                    if (text == null) text = "";
+                    if (text == null)
+                        text = "";
                     recorder.recordTypeText(text);
                     System.out.println("Recorded: TYPE \"" + text + "\"");
                     continue;
@@ -281,7 +307,8 @@ public final class RecorderCLI {
 
             System.out.print("Write test? (Y/N) [Y]: ");
             String ans = br.readLine();
-            if (ans == null) ans = "";
+            if (ans == null)
+                ans = "";
             ans = ans.trim();
             if (!ans.isEmpty() && ans.equalsIgnoreCase("N")) {
                 System.out.println("Recording cancelled. No test was written.");
@@ -290,8 +317,11 @@ public final class RecorderCLI {
 
             Path written;
 
-            boolean repoWrite = (explicitOutFile == null && projectDir == null)
-                    || isDeskPilotRepoWrite(explicitOutFile, projectDir);
+            boolean repoWrite = isDeskPilotRepoWrite(explicitOutFile, projectDir)
+                    || (explicitOutFile == null && projectDir == null && isDeskPilotRepoRoot(Path.of(".")));
+            if (!repoWrite && explicitOutFile == null && projectDir == null) {
+                projectDir = Path.of(".");
+            }
 
             if (repoWrite) {
                 written = TestClassGenerator.generateIntoRepoEngineGenerated(actions, force);
@@ -348,8 +378,7 @@ public final class RecorderCLI {
                         "  --projectDir <dir>\n" +
                         "  --package <javaPackage>\n" +
                         "  --force\n" +
-                        "  --help\n"
-        );
+                        "  --help\n");
     }
 
     private static void printHelp() {
@@ -370,7 +399,8 @@ public final class RecorderCLI {
     }
 
     private static boolean isInsideDeskPilotRepoEngine(Path p) {
-        if (p == null) return false;
+        if (p == null)
+            return false;
         String s = p.toString().replace("\\", "/").toLowerCase(Locale.ROOT);
         return s.contains("/modules/engine/") || s.endsWith("/modules/engine");
     }
@@ -382,7 +412,8 @@ public final class RecorderCLI {
     private static Properties loadDeskpilotProps(Path dir) {
         try {
             Path p = dir.resolve("deskpilot.properties");
-            if (!Files.exists(p)) return null;
+            if (!Files.exists(p))
+                return null;
             Properties props = new Properties();
             try (var in = Files.newInputStream(p)) {
                 props.load(in);
@@ -393,11 +424,25 @@ public final class RecorderCLI {
         }
     }
 
+    private static boolean isDeskPilotRepoRoot(Path dir) {
+        try {
+            Path d = dir.toAbsolutePath().normalize();
+            return Files.exists(d.resolve("pom.xml"))
+                    && Files.isDirectory(d.resolve("modules"))
+                    && Files.isDirectory(d.resolve("modules").resolve("engine"))
+                    && Files.isDirectory(d.resolve("modules").resolve("cli"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static String prop(Properties props, String key) {
-        if (props == null) return null;
+        if (props == null)
+            return null;
         String v = props.getProperty(key);
         return (v == null) ? null : v.trim();
     }
 
-    private RecorderCLI() {}
+    private RecorderCLI() {
+    }
 }

@@ -7,7 +7,7 @@
 
   <groupId>io.deskpilot</groupId>
   <artifactId>deskpilot</artifactId>
-  <version>0.1.2</version>
+  <version>0</version>
   <packaging>pom</packaging>
   <name>deskpilot</name>
 
